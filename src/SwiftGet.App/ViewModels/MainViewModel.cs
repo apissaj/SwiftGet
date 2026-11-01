@@ -54,6 +54,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ToggleThemeCommand = new RelayCommand(_ => ToggleTheme());
         FocusUrlCommand = new RelayCommand(_ => FocusUrlRequested?.Invoke(this, EventArgs.Empty));
 
+        SetFilterCommand = new RelayCommand(param =>
+        {
+            // CommandParameter dari XAML selalu string, jadi penguraian enum
+            // dilakukan di sini; tidak perlu converter di antaranya.
+            if (Enum.TryParse(param?.ToString(), ignoreCase: true, out DownloadFilter filter))
+                Downloads.Filter = filter;
+        });
+        ClearFilterCommand = new RelayCommand(_ => Downloads.Filter = DownloadFilter.All,
+            new Func<object?, bool>(_ => Downloads.HasFilter));
+
         Downloads.Items.CollectionChanged += (_, _) => RefreshCommandStates();
     }
 
@@ -167,6 +177,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand CloseInspectorCommand { get; }
     public RelayCommand ToggleThemeCommand { get; }
     public RelayCommand FocusUrlCommand { get; }
+    public RelayCommand SetFilterCommand { get; }
+    public RelayCommand ClearFilterCommand { get; }
 
     public async System.Threading.Tasks.Task InitializeAsync()
     {
@@ -445,6 +457,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ResumeAllCommand.RaiseCanExecuteChanged();
         ClearCompletedCommand.RaiseCanExecuteChanged();
         CopyUrlCommand.RaiseCanExecuteChanged();
+        ClearFilterCommand.RaiseCanExecuteChanged();
     }
 
     public void Dispose()

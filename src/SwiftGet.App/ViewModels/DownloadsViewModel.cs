@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using SwiftGet.App.Infrastructure;
 using SwiftGet.App.Themes;
@@ -35,6 +35,7 @@ public sealed class DownloadItemViewModel : ObservableObject
         FileName = task.FileName;
         Url = task.Url.ToString();
         _state = task.State;
+        _totalBytes = task.TotalLength;
         SpeedHistory = new ObservableCollection<double>();
         Segments = new ObservableCollection<SegmentView>();
     }
@@ -348,6 +349,7 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
         _dispatcher = dispatcher;
 
         Items = new ObservableCollection<DownloadItemViewModel>();
+        VisibleItems = new ObservableCollection<DownloadItemViewModel>();
         SpeedHistory = new ObservableCollection<double>();
 
         _manager.ProgressChanged += OnProgressChanged;
@@ -361,7 +363,62 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
         _sampler.Start();
     }
 
+    /// <summary>Semua unduhan, tanpa penyaring.</summary>
     public ObservableCollection<DownloadItemViewModel> Items { get; }
+
+    /// <summary>
+    /// Unduhan yang tampil setelah filter dan pengurutan. Koleksi inilah yang
+    /// diikat ke daftar di tampilan, sehingga menyaring tidak mengacaukan
+    /// urutan sisipan di <see cref="Items"/>.
+    /// </summary>
+    public ObservableCollection<DownloadItemViewModel> VisibleItems { get; }
+
+    private DownloadFilter _filter = DownloadFilter.All;
+    private DownloadSort _sort = DownloadSort.Newest;
+
+    /// <summary>Penyaring aktif. Mengubahnya langsung memperbarui daftar.</summary>
+    public DownloadFilter Filter
+    {
+        get => _filter;
+        set
+        {
+            if (!SetProperty(ref _filter, value)) return;
+            OnPropertyChanged(nameof(FilterLabel));
+            OnPropertyChanged(nameof(HasFilter));
+            ApplyFilterAndSort();
+        }
+    }
+
+    public string FilterLabel => _filter switch
+    {
+        DownloadFilter.All => "Semua",
+        DownloadFilter.Active => "Berjalan",
+        DownloadFilter.Failed => "Gagal",
+        DownloadFilter.Completed => "Selesai",
+        _ => "Semua",
+    };
+
+    /// <summary>True bila penyaring bukan "semua".</summary>
+    public bool HasFilter => _filter != DownloadFilter.All;
+
+    public DownloadSort Sort
+    {
+        get => _sort;
+        set
+        {
+            if (!SetProperty(ref _sort, value)) return;
+            OnPropertyChanged(nameof(SortLabel));
+            ApplyFilterAndSort();
+        }
+    }
+
+    public string SortLabel => _sort switch
+    {
+        DownloadSort.Newest => "Terbaru",
+        DownloadSort.Status => "Status",
+        DownloadSort.Size => "Ukuran",
+        _ => "Terbaru",
+    };
 
     /// <summary>Riwayat kecepatan total, untuk sparkline header.</summary>
     public ObservableCollection<double> SpeedHistory { get; }
@@ -397,10 +454,14 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
     /// <summary>True bila daftar kosong, dipakai keadaan kosong di UI.</summary>
     public bool IsEmpty => Items.Count == 0;
 
+    /// <summary>True bila ada unduhan, tapi penyaring menyembunyikan semuanya.</summary>
+    public bool IsFilteredEmpty => Items.Count > 0 && VisibleItems.Count == 0;
+
     public DownloadItemViewModel Add(DownloadTask task)
     {
         var vm = new DownloadItemViewModel(task);
         Items.Insert(0, vm);
+        ApplyFilterAndSort();
         UpdateSummary();
         return vm;
     }
@@ -410,6 +471,7 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
         Items.Clear();
         foreach (DownloadTask task in tasks)
             Items.Add(new DownloadItemViewModel(task));
+        ApplyFilterAndSort();
         UpdateSummary();
     }
 
@@ -418,16 +480,65 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
         DownloadItemViewModel? vm = Items.FirstOrDefault(i => i.Id == id);
         if (vm is null) return;
         Items.Remove(vm);
+        ApplyFilterAndSort();
         UpdateSummary();
     }
+
+    /// <summary>
+    /// Terapkan penyaring dan pengurutan ke <see cref="VisibleItems"/>.
+    /// Sengaja rebuilding, bukan penyaringan in-place: daftar unduhan jarang
+    /// lebih dari beberapa puluh baris, dan rebuild membuat urutan selalu
+    /// benar tanpa harus melacak posisi tiap item.
+    /// </summary>
+    public void ApplyFilterAndSort()
+    {
+        IEnumerable<DownloadItemViewModel> query = Items;
+
+        query = _filter switch
+        {
+            DownloadFilter.Active => query.Where(i =>
+                i.State is DownloadState.Downloading or DownloadState.Probing
+                    or DownloadState.Queued or DownloadState.Paused),
+            DownloadFilter.Failed => query.Where(i => i.State == DownloadState.Failed),
+            DownloadFilter.Completed => query.Where(i => i.State == DownloadState.Completed),
+            _ => query,
+        };
+
+        query = _sort switch
+        {
+            DownloadSort.Status => query.OrderBy(SortKeyForStatus).ThenBy(i => i.FileName, StringComparer.CurrentCulture),
+            DownloadSort.Size => query.OrderByDescending(i => i.TotalBytes ?? 0).ThenBy(i => i.FileName, StringComparer.CurrentCulture),
+            _ => query,
+        };
+
+        VisibleItems.Clear();
+        foreach (DownloadItemViewModel item in query) VisibleItems.Add(item);
+    }
+
+    /// <summary>
+    /// Urutan status: yang gagal lebih dulu karena butuh tindakan, lalu yang
+    /// berjalan, dijeda, dan selesai di akhir.
+    /// </summary>
+    private static int SortKeyForStatus(DownloadItemViewModel item) => item.State switch
+    {
+        DownloadState.Failed => 0,
+        DownloadState.Downloading or DownloadState.Probing => 1,
+        DownloadState.Queued => 2,
+        DownloadState.Paused => 3,
+        DownloadState.Completed => 4,
+        DownloadState.Canceled => 5,
+        _ => 6,
+    };
 
     private void UpdateSummary()
     {
         int total = Items.Count;
+
         if (total == 0)
         {
             SummaryText = "Belum ada unduhan";
             OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(IsFilteredEmpty));
             return;
         }
 
@@ -437,6 +548,7 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
             : $"{done} selesai dari {total} unduhan";
 
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(IsFilteredEmpty));
     }
 
     private void OnProgressChanged(DownloadProgress progress)
@@ -452,6 +564,10 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
 
         if (item.TotalSegments != progress.TotalSegments) item.RefreshFromTask();
         item.Apply(progress);
+
+        // Status bisa memindahkan item antar penyaring (misal "Gagal" ke
+        // "Selesai"), jadi daftar harus disaring ulang.
+        ApplyFilterAndSort();
         UpdateSummary();
     }
 
@@ -465,6 +581,7 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
 
         DownloadItemViewModel? item = Items.FirstOrDefault(i => i.Id == id);
         item?.ApplyState(state, error);
+        ApplyFilterAndSort();
         UpdateSummary();
     }
 

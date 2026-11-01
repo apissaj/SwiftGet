@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private const double OverlayBreakpoint = 1000;
 
     private SystemThemeWatcher? _themeWatcher;
+    private MotionPreferenceWatcher? _motionWatcher;
     private FocusTrap? _focusTrap;
     private bool _inspectorOverlay;
 
@@ -104,8 +105,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Watcher tema dipasang setelah jendela punya handle, karena ia butuh
-    /// WM_SETTINGCHANGE dari jendela ini.
+    /// Watcher tema dan gerakan dipasang setelah jendela punya handle, karena
+    /// keduanya butuh WM_SETTINGCHANGE dari jendela ini.
     /// </summary>
     private void SetupWatchers()
     {
@@ -118,6 +119,16 @@ public partial class MainWindow : Window
         {
             _viewModel.SetStatus("Pemantau tema tidak aktif: " + ex.Message);
         }
+
+        try
+        {
+            _motionWatcher = new MotionPreferenceWatcher(this);
+            _motionWatcher.ReduceMotionChanged += OnReduceMotionChanged;
+        }
+        catch (Exception ex)
+        {
+            _viewModel.SetStatus("Pemantau gerakan tidak aktif: " + ex.Message);
+        }
     }
 
     /// <summary>
@@ -129,6 +140,15 @@ public partial class MainWindow : Window
     {
         if (_viewModel.DarkThemeOverride is not null) return;
         _viewModel.ApplySystemTheme(dark);
+    }
+
+    private void OnReduceMotionChanged(bool reduce)
+    {
+        // Motion membaca flag ini lewat Effective(); beri tahu tampilan supaya
+        // grafik berhenti menganimasikan tanpa perlu restart.
+        _viewModel.SetStatus(reduce
+            ? "Animasi dimatikan mengikuti pengaturan Windows"
+            : "Animasi aktif kembali");
     }
 
     private void SetupTray()
@@ -287,7 +307,25 @@ public partial class MainWindow : Window
 
         _themeWatcher?.Dispose();
         _themeWatcher = null;
+        _motionWatcher?.Dispose();
+        _motionWatcher = null;
         Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// Tombol urut bergilir: Terbaru, Status, Ukuran, lalu kembali. Satu
+    /// kontrol untuk tiga pilihan lebih tenang daripada tiga tombol yang
+    /// selalu terlihat, dan label tombol menunjukkan pilihan aktif.
+    /// </summary>
+    private void SortButton_Click(object sender, RoutedEventArgs e)
+    {
+        DownloadsViewModel downloads = _viewModel.Downloads;
+        downloads.Sort = downloads.Sort switch
+        {
+            DownloadSort.Newest => DownloadSort.Status,
+            DownloadSort.Status => DownloadSort.Size,
+            _ => DownloadSort.Newest,
+        };
     }
 
     /// <summary>Klik di luar panel menutup lapisan, seperti dialog.</summary>

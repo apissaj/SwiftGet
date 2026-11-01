@@ -33,6 +33,12 @@ public static class Motion
     public static bool ReduceMotion { get; private set; }
 
     /// <summary>
+    /// Perbarui nilai reduce-motion saat runtime (dipanggil oleh
+    /// <see cref="MotionPreferenceWatcher"/> bila pengaturan Windows berubah).
+    /// </summary>
+    public static void UpdateReduceMotion(bool reduce) => ReduceMotion = reduce;
+
+    /// <summary>
     /// Durasi efektif: nol ketika gerakan dikurangi.
     /// </summary>
     public static TimeSpan Effective(TimeSpan desired) => ReduceMotion ? TimeSpan.Zero : desired;

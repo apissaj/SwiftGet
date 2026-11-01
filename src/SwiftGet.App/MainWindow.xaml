@@ -139,7 +139,40 @@
                         <Button Content="Lanjutkan semua" Style="{StaticResource GhostButton}"
                                 Command="{Binding ResumeAllCommand}" Margin="0,0,8,0" />
                         <Button Content="Hapus yang selesai" Style="{StaticResource GhostButton}"
-                                Command="{Binding ClearCompletedCommand}" />
+                                Command="{Binding ClearCompletedCommand}" Margin="0,0,14,0" />
+
+                        <!-- Penyaring: empat kondisi, tidak ada lagi -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                            <RadioButton x:Name="FilterAll" GroupName="DownloadFilter"
+                                        Content="Semua" Style="{StaticResource FilterRadio}"
+                                        IsChecked="True" Margin="0,0,4,0"
+                                        Command="{Binding SetFilterCommand}"
+                                        CommandParameter="All" />
+                            <RadioButton x:Name="FilterActive" GroupName="DownloadFilter"
+                                        Content="Berjalan" Style="{StaticResource FilterRadio}"
+                                        Margin="0,0,4,0"
+                                        Command="{Binding SetFilterCommand}"
+                                        CommandParameter="Active" />
+                            <RadioButton x:Name="FilterFailed" GroupName="DownloadFilter"
+                                        Content="Gagal" Style="{StaticResource FilterRadio}"
+                                        Margin="0,0,4,0"
+                                        Command="{Binding SetFilterCommand}"
+                                        CommandParameter="Failed" />
+                            <RadioButton x:Name="FilterCompleted" GroupName="DownloadFilter"
+                                        Content="Selesai" Style="{StaticResource FilterRadio}"
+                                        Command="{Binding SetFilterCommand}"
+                                        CommandParameter="Completed" />
+                        </StackPanel>
+
+                        <!-- Urutan: hanya kolom yang menjawab keputusan pengguna -->
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Urut" Style="{StaticResource Caption}"
+                                       VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <Button x:Name="SortButton" Content="{Binding Downloads.SortLabel}"
+                                    Style="{StaticResource GhostButton}" Padding="10,5"
+                                    Click="SortButton_Click"
+                                    ToolTip="Urutkan daftar" />
+                        </StackPanel>
                     </StackPanel>
 
                     <TextBlock Grid.Column="2" Text="{Binding StatusMessage}"
@@ -156,7 +189,7 @@
                         BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1" CornerRadius="10">
                     <Grid>
-                        <ListBox ItemsSource="{Binding Downloads.Items}"
+                        <ListBox ItemsSource="{Binding Downloads.VisibleItems}"
                                  SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                                  Style="{StaticResource DownloadList}"
                                  MinHeight="160">
@@ -299,6 +332,21 @@
                             <Button Content="Ke kotak URL" Style="{StaticResource GhostButton}"
                                     Margin="0,14,0,0" HorizontalAlignment="Center"
                                     Command="{Binding FocusUrlCommand}" />
+                        </StackPanel>
+
+                        <!-- Keadaan kosong: penyaring tidak menghasilkan apa pun -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Visibility="{Binding Downloads.IsFilteredEmpty, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Tidak ada yang cocok"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Tidak ada unduhan pada penyaring ini."
+                                       Margin="0,6,0,0" HorizontalAlignment="Center"
+                                       Style="{StaticResource Caption}" />
+                            <Button Content="Tampilkan semua" Style="{StaticResource GhostButton}"
+                                    Margin="0,14,0,0" HorizontalAlignment="Center"
+                                    Command="{Binding ClearFilterCommand}" />
                         </StackPanel>
                     </Grid>
                 </Border>
