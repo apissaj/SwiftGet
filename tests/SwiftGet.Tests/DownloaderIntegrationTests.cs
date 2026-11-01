@@ -452,6 +452,178 @@ public sealed class DownloaderIntegrationTests : IAsyncLifetime
         byte[] actual = await File.ReadAllBytesAsync(task.FinalPath);
         Assert.Equal(_server.Content, actual);
     }
+
+    // ---------- Dynamic segmentation: reassign dan pemecahan ekor ----------
+
+    /// <summary>RetryPolicy cepat khusus test supaya jeda retry tidak memperlambat uji.</summary>
+    private static RetryPolicy RetryCepat() => new()
+    {
+        BaseDelay = TimeSpan.FromMilliseconds(50),
+        JitterFactor = 0.1,
+    };
+
+    [Fact]
+    public async Task Koneksi_Diputus_Di_Tengah_Stream_Unduhan_Tetap_Selesai()
+    {
+        // Dua koneksi data pertama diputus setelah mengirim sebagian. Pada
+        // arsitektur lama rentang yang gagal dibiarkan menggantung (orphan) dan
+        // unduhan berakhir gagal; sekarang rentangnya dikembalikan ke antrean
+        // dan dikerjakan ulang worker mana pun.
+        _server.Content = MakePayload(2 * 1024 * 1024);
+        _server.AbortFirstDataConnections = 2;
+
+        DownloadTask task = NewTask();
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget(new SchedulerOptions { MaxConnectionsPerDownload = 8 });
+
+        await using var session = new DownloadSession(task, http, budget, store,
+            maxConnections: 4, RetryCepat());
+        await session.RunAsync();
+
+        Assert.Equal(DownloadState.Completed, task.State);
+
+        // Reassign rentang tidak boleh meninggalkan celah: isi file benar byte-per-byte.
+        byte[] actual = await File.ReadAllBytesAsync(task.FinalPath);
+        Assert.Equal(_server.Content, actual);
+
+        // Bukti reassign: rentang gagal diminta ulang, jadi permintaan data lebih
+        // banyak dari segmen awal (4) ditambah percobaan ulangnya.
+        Assert.True(_server.DataRequestCount > 4,
+            $"Diharapkan permintaan ulang setelah putus, dapat {_server.DataRequestCount} permintaan data.");
+    }
+
+    [Fact]
+    public async Task Reassign_Berulang_Tidak_Menghasilkan_Byte_Duplikat()
+    {
+        // Tiga koneksi data pertama diputus di tengah aliran. Kombinasi
+        // penulisan parsial dari koneksi putus + lanjutan dari worker lain
+        // adalah situasi paling rawan duplikasi/korupsi byte.
+        _server.Content = MakePayload(4 * 1024 * 1024);
+        _server.AbortFirstDataConnections = 3;
+
+        DownloadTask task = NewTask();
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget(new SchedulerOptions { MaxConnectionsPerDownload = 8 });
+
+        await using var session = new DownloadSession(task, http, budget, store,
+            maxConnections: 4, RetryCepat());
+        await session.RunAsync();
+
+        Assert.Equal(DownloadState.Completed, task.State);
+
+        // Isi file benar byte-per-byte: hanya mungkin bila tidak ada byte yang
+        // tertulis dua kali pada offset salah dan tidak ada celah.
+        byte[] actual = await File.ReadAllBytesAsync(task.FinalPath);
+        Assert.Equal(_server.Content, actual);
+    }
+
+    [Fact]
+    public async Task Worker_Menganggur_Memecah_Ekor_Segmen_Aktif()
+    {
+        // Satu koneksi data pertama dilambatkan; dua worker lain habis pekerjaan
+        // dan harus memecah ekor segmen aktif milik worker lambat. Bukti
+        // pemecahan: jumlah permintaan data di server melebihi segmen awal.
+        _server.Content = MakePayload(4 * 1024 * 1024);
+        _server.SlowFirstDataConnections = 1;
+        _server.SlowChunkBytes = 32 * 1024;
+        _server.SlowChunkDelayMs = 10;
+
+        int segmenAwal = SegmentPlanner.Plan(_server.Content.Length, 3).Count;
+
+        DownloadTask task = NewTask();
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget(new SchedulerOptions { MaxConnectionsPerDownload = 8 });
+
+        await using var session = new DownloadSession(task, http, budget, store,
+            maxConnections: 3, RetryCepat());
+        await session.RunAsync();
+
+        Assert.Equal(DownloadState.Completed, task.State);
+
+        byte[] actual = await File.ReadAllBytesAsync(task.FinalPath);
+        Assert.Equal(_server.Content, actual);
+
+        // Segmen awal 3; pemecahan ekor menambah permintaan Range baru di server.
+        Assert.True(_server.DataRequestCount >= segmenAwal + 1,
+            $"Diharapkan minimal {segmenAwal + 1} permintaan data (bukti pemecahan ekor), " +
+            $"dapat {_server.DataRequestCount}.");
+
+        // Segmen bertambah melebihi rencana awal: bukti struktur, bukan cuma trafik.
+        Assert.True(task.GetSegments().Count > segmenAwal,
+            $"Diharapkan lebih dari {segmenAwal} segmen, dapat {task.GetSegments().Count}.");
+    }
+
+    [Fact]
+    public async Task Pause_Lalu_Resume_Melanjutkan_Dari_NextPosition_Segmen()
+    {
+        const int ambangPause = 1024 * 1024; // jeda setelah 1 MiB terunduh
+
+        _server.Content = MakePayload(4 * 1024 * 1024);
+        _server.SlowFirstDataConnections = 1;
+        _server.SlowChunkBytes = 32 * 1024;
+        _server.SlowChunkDelayMs = 5;
+
+        DownloadTask task = NewTask();
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget(new SchedulerOptions { MaxConnectionsPerDownload = 8 });
+
+        // Satu koneksi saja supaya unduhan berjalan sequential dan titik pause deterministik.
+        int pauseDiminta = 0;
+        DownloadSession sesi1 = null!;
+        sesi1 = new DownloadSession(task, http, budget, store, maxConnections: 1, RetryCepat(),
+            onProgress: p =>
+            {
+                if (p.BytesDownloaded >= ambangPause && Interlocked.Exchange(ref pauseDiminta, 1) == 0)
+                {
+                    sesi1.Pause();
+                }
+            });
+
+        await using (sesi1)
+        {
+            await sesi1.RunAsync();
+        }
+
+        Assert.Equal(DownloadState.Paused, task.State);
+
+        // Satu segmen (4 MiB, 1 koneksi) yang sudah berjalan melewati ambang.
+        var segmenPause = task.GetSegments();
+        Segment segmen = Assert.Single(segmenPause);
+        long nextPosition = segmen.NextPosition;
+        Assert.True(nextPosition >= ambangPause,
+            $"Pause terlambat: NextPosition {nextPosition} < ambang {ambangPause}.");
+        Assert.True(nextPosition < _server.Content.Length,
+            "Unduhan sudah tuntas saat pause; throttle server tidak bekerja.");
+
+        // Fase resume diukur terpisah dari trafik tahap pertama.
+        lock (_server.RequestedRanges) _server.RequestedRanges.Clear();
+
+        await using var sesi2 = new DownloadSession(task, http, budget, store,
+            maxConnections: 1, RetryCepat());
+        await sesi2.RunAsync();
+
+        Assert.Equal(DownloadState.Completed, task.State);
+
+        byte[] actual = await File.ReadAllBytesAsync(task.FinalPath);
+        Assert.Equal(_server.Content, actual);
+
+        // Permintaan data saat resume harus mulai dari NextPosition segmen,
+        // bukan mengulang byte yang sudah tertulis.
+        List<(long From, long To)> resume;
+        lock (_server.RequestedRanges) resume = _server.RequestedRanges.ToList();
+
+        List<(long From, long To)> dataResume = resume.Where(r => r.To > r.From).ToList();
+        Assert.NotEmpty(dataResume);
+
+        Assert.All(dataResume, r =>
+            Assert.True(r.From >= nextPosition,
+                $"Resume meminta ulang byte yang sudah tertulis: {r} (NextPosition saat pause {nextPosition})."));
+        Assert.Contains(dataResume, r => r.From == nextPosition);
+    }
 }
 
 

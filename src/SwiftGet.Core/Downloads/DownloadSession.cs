@@ -10,10 +10,13 @@ namespace SwiftGet.Core.Downloads;
 /// Alur:
 /// <list type="number">
 ///   <item>Probe URL untuk panjang konten dan dukungan Range.</item>
-///   <item>Rencanakan segmen (atau satu segmen bila Range tidak didukung).</item>
-///   <item>Jalankan satu worker per segmen; tiap worker memegang izin koneksi.</item>
-///   <item>Worker yang gagal mengembalikan sisa rentangnya agar bisa dipindahkan
-///         ke worker lain (reassign), bukan dibiarkan menggantung.</item>
+///   <item>Rencanakan segmen awal (atau satu segmen bila Range tidak didukung).</item>
+///   <item>Kolam worker mengambil segmen dari koordinator: yang terbesar yang
+///         belum diklaim. Jumlah worker = batas koneksi, bukan jumlah segmen.</item>
+///   <item>Dynamic segmentation: worker yang menganggur memecah segmen aktif
+///         terbesar dan mengambil ekornya; segmen kecil yang bersebelahan
+///         digabung sebelum diklaim. Rentang yang gagal berkali-kali
+///         dikembalikan ke antrean untuk worker lain, bukan dibiarkan gantung.</item>
 ///   <item>Setelah semua segmen selesai, file sementara dipindahkan menjadi file akhir.</item>
 /// </list>
 /// </para>
@@ -32,10 +35,15 @@ public sealed class DownloadSession : IAsyncDisposable
 
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _manifestGate = new(1, 1);
-    private readonly object _pendingGate = new();
 
-    /// <summary>Rentang yang ditinggalkan worker gagal, menunggu diambil worker lain.</summary>
-    private readonly List<int> _orphanedSegments = new();
+    // Koordinator klaim kerja. Urutan penguncian selalu _workGate lalu gate
+    // internal _task, tidak pernah sebaliknya, supaya tidak ada deadlock.
+    private readonly object _workGate = new();
+    private readonly HashSet<int> _claimed = new();
+
+    /// <summary>Percobaan ulang kumulatif per segmen, melewati batas antar klaim.</summary>
+    private readonly Dictionary<int, int> _segmentAttempts = new();
+    private volatile bool _workAbandoned;
 
     private PartFile? _partFile;
     private Task? _runner;
@@ -217,25 +225,25 @@ public sealed class DownloadSession : IAsyncDisposable
         _task.SetState(DownloadState.Downloading);
         PublishProgress();
 
-        IReadOnlyList<Segment> segments = _task.GetSegments();
-
-        // Satu worker per segmen, tapi hanya selama segmen itu belum selesai.
-        var workers = new List<Task>(segments.Count);
-        foreach (Segment segment in segments)
-        {
-            if (segment.IsComplete) continue;
-            workers.Add(WorkerLoopAsync(segment.Index, ct));
-        }
-
-        if (workers.Count == 0)
+        int unfinished = _task.GetSegments().Count(s => !s.IsComplete);
+        if (unfinished == 0)
         {
             await SaveManifestSafeAsync().ConfigureAwait(false);
             return;
         }
 
+        // Jumlah worker = batas koneksi, bukan jumlah segmen: segmen boleh
+        // bertambah (pemecahan) dan berkurang (penggabungan) saat berjalan.
+        int workerCount = Math.Min(_maxConnections, unfinished);
+        var workers = new List<Task>(workerCount);
+        for (int i = 0; i < workerCount; i++)
+            workers.Add(WorkerLoopAsync(ct));
+
         await System.Threading.Tasks.Task.WhenAll(workers).ConfigureAwait(false);
 
-        // Setelah semua worker berhenti, cek masih ada sisa atau tidak.
+        // Worker hanya berhenti bila tidak ada kerja yang bisa diklaim atau
+        // dipecah. Sisa yang belum lengkap berarti pekerjaan ditinggalkan
+        // (segmen gagal terus-menerus) — jangan diam-diam dianggap selesai.
         IReadOnlyList<Segment> refreshed = _task.GetSegments();
         if (refreshed.Any(s => !s.IsComplete) && !_paused && !_canceled)
         {
@@ -245,66 +253,159 @@ public sealed class DownloadSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Loop kerja untuk satu segmen: ambil izin koneksi, minta rentang sisa,
-    /// tulis ke file, ulangi dengan retry bila gagal.
+    /// Loop kerja satu worker: klaim segmen terbesar yang belum diklaim,
+    /// kerjakan sampai tuntas, lalu klaim berikutnya. Berhenti bila tidak ada
+    /// kerja tersisa yang bisa diambil atau dipecah.
     /// </summary>
-    private async Task WorkerLoopAsync(int segmentIndex, CancellationToken ct)
+    private async Task WorkerLoopAsync(CancellationToken ct)
     {
         string host = _task.Url.Host;
 
         while (!ct.IsCancellationRequested && !_paused)
         {
-            Segment segment = _task.GetSegments()[segmentIndex];
-            if (segment.IsComplete) return;
+            int? segmentIndex = ClaimNextWork();
+            if (segmentIndex is null) return;
 
-            int attempt = 0;
-            bool reassigned = false;
-
-            while (attempt < _retry.MaxAttempts && !ct.IsCancellationRequested && !_paused)
+            try
             {
-                attempt++;
-                bool entered = false;
+                await ProcessSegmentAsync(segmentIndex.Value, host, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                lock (_workGate) _claimed.Remove(segmentIndex.Value);
+            }
+        }
+    }
 
-                try
-                {
-                    await _budget.EnterConnectionAsync(host, ct).ConfigureAwait(false);
-                    entered = true;
+    /// <summary>
+    /// Ambil kerja berikutnya dari koordinator: gabung segmen kecil bersebelahan
+    /// yang belum mulai, klaim segmen terbesar yang belum diklaim, atau — bila
+    /// tidak ada yang menganggur — pecah segmen aktif terbesar dan klaim ekornya.
+    /// Mengembalikan null bila tidak ada lagi yang bisa dikerjakan.
+    /// </summary>
+    private int? ClaimNextWork()
+    {
+        lock (_workGate)
+        {
+            if (_workAbandoned) return null;
 
-                    await DownloadSegmentOnceAsync(segmentIndex, ct).ConfigureAwait(false);
-                    return; // segmen selesai
-                }
-                catch (OperationCanceledException)
+            if (_task.SupportsRanges)
+            {
+                // Penggabungan: dua segmen bersebelahan yang belum mulai menjadi
+                // satu request Range, bukan dua request mikro.
+                IReadOnlyList<Segment> before = _task.GetSegments();
+                for (int i = 0; i + 1 < before.Count; i++)
                 {
-                    return;
-                }
-                catch (DownloadException ex) when (ex.Kind == DownloadErrorKind.ContentChanged)
-                {
-                    throw; // perubahan konten tidak layak diulang per segmen
-                }
-                catch (DownloadException ex) when (RetryPolicy.IsTransient(ex))
-                {
-                    if (attempt >= _retry.MaxAttempts)
+                    Segment a = before[i];
+                    Segment b = before[i + 1];
+                    if (!_claimed.Contains(a.Index) && !_claimed.Contains(b.Index) &&
+                        a.BytesDone == 0 && b.BytesDone == 0)
                     {
-                        // Beri kesempatan worker lain menyelesaikan rentang ini.
-                        Orphan(segmentIndex);
-                        reassigned = true;
-                        break;
+                        _task.MergeWithNext(a.Index);
+                        break; // satu gabung per klaim; snapshot diambil ulang
                     }
-
-                    await SafeDelayAsync(_retry.GetDelay(attempt), ct).ConfigureAwait(false);
-                    segment = _task.GetSegments()[segmentIndex];
-                }
-                catch (DownloadException)
-                {
-                    throw;
-                }
-                finally
-                {
-                    if (entered) _budget.ExitConnection(host);
                 }
             }
 
-            if (reassigned) return;
+            IReadOnlyList<Segment> segments = _task.GetSegments();
+
+            // Work-stealing ala IDM: segmen sisa terbesar dikerjakan lebih dulu.
+            Segment? best = null;
+            foreach (Segment s in segments)
+            {
+                if (s.IsComplete || _claimed.Contains(s.Index)) continue;
+                if (best is null || s.Remaining > best.Remaining) best = s;
+            }
+
+            if (best is not null)
+            {
+                _claimed.Add(best.Index);
+                return best.Index;
+            }
+
+            // Tidak ada kerja menganggur, tapi masih ada segmen aktif yang
+            // besar: pecah ekornya supaya koneksi ini ikut bekerja.
+            if (_task.SupportsRanges)
+            {
+                Segment? victim = null;
+                foreach (Segment s in segments)
+                {
+                    if (!_claimed.Contains(s.Index) || s.IsComplete) continue;
+                    if (s.Remaining >= 2 * SegmentPlanner.MinSegmentSize &&
+                        (victim is null || s.Remaining > victim.Remaining)) victim = s;
+                }
+
+                if (victim is not null)
+                {
+                    long splitPoint = victim.End - victim.Remaining / 2;
+                    splitPoint -= splitPoint % SegmentPlanner.AlignmentBytes;
+                    if (splitPoint >= victim.NextPosition + SegmentPlanner.MinSegmentSize)
+                    {
+                        int newIndex = _task.SplitFromEnd(victim.Index, splitPoint);
+                        _claimed.Add(newIndex);
+                        return newIndex;
+                    }
+                }
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Kerjakan satu segmen sampai tuntas: ambil izin koneksi, minta rentang
+    /// sisa, tulis ke file. Gagal sementara diulang; habis kuota, rentangnya
+    /// dikembalikan ke koordinator untuk worker lain.
+    /// </summary>
+    private async Task ProcessSegmentAsync(int segmentIndex, string host, CancellationToken ct)
+    {
+        int attempt = 0;
+
+        while (attempt < _retry.MaxAttempts && !ct.IsCancellationRequested && !_paused)
+        {
+            attempt++;
+            bool entered = false;
+
+            try
+            {
+                await _budget.EnterConnectionAsync(host, ct).ConfigureAwait(false);
+                entered = true;
+
+                await DownloadSegmentOnceAsync(segmentIndex, ct).ConfigureAwait(false);
+                return; // segmen selesai
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (DownloadException ex) when (ex.Kind == DownloadErrorKind.ContentChanged)
+            {
+                throw; // perubahan konten tidak layak diulang per segmen
+            }
+            catch (DownloadException ex) when (RetryPolicy.IsTransient(ex))
+            {
+                // Rentang dikembalikan ke antrean: worker lain (atau worker ini,
+                // lewat klaim berikutnya) meneruskannya. Bila segmen yang sama
+                // gagal terus melampaui batas kumulatif, hentikan semuanya.
+                lock (_workGate)
+                {
+                    int total = _segmentAttempts.TryGetValue(segmentIndex, out int n) ? n : 0;
+                    _segmentAttempts[segmentIndex] = total + 1;
+                    if (total + 1 >= _retry.MaxAttempts * 2) _workAbandoned = true;
+                }
+
+                if (!_workAbandoned)
+                    await SafeDelayAsync(_retry.GetDelay(attempt), ct).ConfigureAwait(false);
+                return;
+            }
+            catch (DownloadException)
+            {
+                throw;
+            }
+            finally
+            {
+                if (entered) _budget.ExitConnection(host);
+            }
         }
     }
 
@@ -429,15 +530,6 @@ public sealed class DownloadSession : IAsyncDisposable
 
         // Hapus manifest dan sisa file sementara; file akhir sudah dipindahkan.
         _store.Delete(_task.Id);
-    }
-
-    private void Orphan(int segmentIndex)
-    {
-        lock (_pendingGate)
-        {
-            if (!_orphanedSegments.Contains(segmentIndex))
-                _orphanedSegments.Add(segmentIndex);
-        }
     }
 
     private long _lastManifestWriteTicks;

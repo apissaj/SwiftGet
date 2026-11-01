@@ -63,8 +63,38 @@ public sealed class TestHttpServer : IAsyncDisposable
     /// <summary>Jumlah permintaan yang membawa header Range.</summary>
     public int RangeRequestCount;
 
+    /// <summary>
+    /// Jumlah permintaan data GET yang benar-benar mengirim isi (panjang > 1 byte).
+    /// Probe <c>bytes=0-0</c> tidak ikut dihitung, jadi angka ini murni kerja unduh.
+    /// </summary>
+    public int DataRequestCount;
+
+    /// <summary>
+    /// N koneksi data pertama diputus di tengah aliran setelah mengirim sebagian
+    /// isi (simulasi server yang bermasalah). Koneksi ke-N+1 dan seterusnya normal.
+    /// </summary>
+    public int AbortFirstDataConnections { get; set; }
+
+    /// <summary>Berapa byte dikirim sebelum koneksi diputus (harus < panjang rentang).</summary>
+    public int AbortAfterBytes { get; set; } = 64 * 1024;
+
+    /// <summary>
+    /// N koneksi data pertama dilambatkan: isi dikirim dalam potongan kecil dengan
+    /// jeda di antaranya (simulasi koneksi lambat agar worker lain menganggur).
+    /// </summary>
+    public int SlowFirstDataConnections { get; set; }
+
+    /// <summary>Ukuran potongan untuk koneksi yang dilambatkan.</summary>
+    public int SlowChunkBytes { get; set; } = 32 * 1024;
+
+    /// <summary>Jeda antar potongan untuk koneksi yang dilambatkan (ms).</summary>
+    public int SlowChunkDelayMs { get; set; } = 5;
+
     /// <summary>Rentang yang diminta, berurutan.</summary>
     public List<(long From, long To)> RequestedRanges { get; } = new();
+
+    /// <summary>Nomor urut permintaan data; hanya dihitung untuk GET berisi > 1 byte.</summary>
+    private int _dataRequestSeq;
 
     private async System.Threading.Tasks.Task AcceptLoopAsync()
     {
@@ -128,6 +158,15 @@ public sealed class TestHttpServer : IAsyncDisposable
                 long actualEnd = Math.Min(to, Content.Length - 1);
                 int length = (int)(actualEnd - from + 1);
 
+                // Probe 1 byte tidak dianggap kerja data, jadi tidak kena abort/slow.
+                bool isDataRequest = length > 1;
+                int seq = 0;
+                if (isDataRequest)
+                {
+                    Interlocked.Increment(ref DataRequestCount);
+                    seq = Interlocked.Increment(ref _dataRequestSeq);
+                }
+
                 res.StatusCode = 206;
                 res.AddHeader("Accept-Ranges", "bytes");
                 res.AddHeader("Content-Range", $"bytes {from}-{actualEnd}/{Content.Length}");
@@ -136,12 +175,23 @@ public sealed class TestHttpServer : IAsyncDisposable
                 res.ContentType = "application/octet-stream";
                 res.ContentLength64 = length;
 
+                if (await CobaPutuskanAtauLambatkanAsync(res, seq, Content, (int)from, length).ConfigureAwait(false))
+                    return; // koneksi sudah diputus atau isinya dikirim bertahap
+
                 await res.OutputStream.WriteAsync(Content.AsMemory((int)from, length)).ConfigureAwait(false);
                 res.Close();
                 return;
             }
 
             // Respons penuh: entah klien tidak minta Range, atau server mengabaikannya.
+            bool dataPenuh = Content.Length > 1;
+            int seqPenuh = 0;
+            if (dataPenuh)
+            {
+                Interlocked.Increment(ref DataRequestCount);
+                seqPenuh = Interlocked.Increment(ref _dataRequestSeq);
+            }
+
             res.StatusCode = 200;
             res.AddHeader("Accept-Ranges", IgnoreRanges ? "none" : "bytes");
             if (ETag is not null) res.AddHeader("ETag", ETag);
@@ -150,12 +200,51 @@ public sealed class TestHttpServer : IAsyncDisposable
             res.ContentType = "application/octet-stream";
             res.ContentLength64 = Content.Length;
 
+            if (await CobaPutuskanAtauLambatkanAsync(res, seqPenuh, Content, 0, Content.Length).ConfigureAwait(false))
+                return;
+
             await res.OutputStream.WriteAsync(Content).ConfigureAwait(false);
             res.Close();
         }
         catch (HttpListenerException) { /* klien menutup koneksi */ }
         catch (ObjectDisposedException) { /* server ditutup */ }
         catch (IOException) { /* klien memutus di tengah tulis */ }
+    }
+
+    /// <summary>
+    /// Terapkan perilaku koneksi bermasalah untuk permintaan data ke-<paramref name="seq"/>.
+    /// Bila nomor urutnya masuk jatah abort, kirim sebagian isi lalu putuskan koneksi
+    /// (klien melihat aliran terpotong sebelum Content-Length terpenuhi). Bila masuk
+    /// jatah slow, kirim seluruh isi dalam potongan berjeda. Mengembalikan true bila
+    /// respons sudah selesai ditangani di sini.
+    /// </summary>
+    private async Task<bool> CobaPutuskanAtauLambatkanAsync(
+        HttpListenerResponse res, int seq, byte[] content, int offset, int length)
+    {
+        if (seq <= 0) return false;
+
+        if (seq <= AbortFirstDataConnections && length > AbortAfterBytes)
+        {
+            await res.OutputStream.WriteAsync(content.AsMemory(offset, AbortAfterBytes)).ConfigureAwait(false);
+            await res.OutputStream.FlushAsync().ConfigureAwait(false);
+            res.Abort(); // putuskan tanpa melengkapi Content-Length
+            return true;
+        }
+
+        if (seq <= SlowFirstDataConnections && length > SlowChunkBytes)
+        {
+            for (int sent = 0; sent < length; sent += SlowChunkBytes)
+            {
+                int n = Math.Min(SlowChunkBytes, length - sent);
+                await res.OutputStream.WriteAsync(content.AsMemory(offset + sent, n)).ConfigureAwait(false);
+                await res.OutputStream.FlushAsync().ConfigureAwait(false);
+                await Task.Delay(SlowChunkDelayMs).ConfigureAwait(false);
+            }
+            res.Close();
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>Kirim header checksum opsional yang diisi oleh test.</summary>

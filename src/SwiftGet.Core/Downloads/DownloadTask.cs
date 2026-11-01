@@ -91,6 +91,62 @@ public sealed class DownloadTask
         }
     }
 
+    /// <summary>
+    /// Pecah segmen dari ujung akhirnya: <paramref name="splitPoint"/> menjadi
+    /// End baru segmen lama, dan rentang <c>[splitPoint, EndLama)</c> menjadi
+    /// segmen baru yang belum diunduh.
+    /// <para>
+    /// Hanya End yang berubah; Start dan BytesDone segmen lama tetap, jadi
+    /// worker pemiliknya otomatis berhenti di batas baru pada iterasi buffer
+    /// berikutnya. Data yang sudah tertulis tidak tersentuh karena setiap
+    /// segmen menulis tepat di offset finalnya. Segmen baru diletakkan di ujung
+    /// daftar dengan index baru — index segmen lama tidak pernah bergeser.
+    /// </para>
+    /// </summary>
+    /// <returns>Index segmen baru hasil pemecahan.</returns>
+    internal int SplitFromEnd(int segmentIndex, long splitPoint)
+    {
+        lock (_gate)
+        {
+            Segment victim = _segments[segmentIndex];
+            if (splitPoint <= victim.Start || splitPoint >= victim.End)
+                throw new ArgumentOutOfRangeException(nameof(splitPoint),
+                    $"Titik potong {splitPoint} harus di dalam rentang segmen [{victim.Start}-{victim.End}).");
+            if (victim.NextPosition > splitPoint)
+                throw new InvalidOperationException(
+                    $"Titik potong {splitPoint} berada di area yang sudah tertulis ({victim.NextPosition}).");
+
+            int newIndex = _segments.Count;
+            var extra = new Segment(newIndex, splitPoint, victim.End);
+            victim.TruncateTo(splitPoint);
+            _segments.Add(extra);
+            return newIndex;
+        }
+    }
+
+    /// <summary>
+    /// Gabungkan segmen <c>segmentIndex</c> dengan tetangga berikutnya. Keduanya
+    /// harus belum mulai diunduh (BytesDone == 0). Tetangga menjadi segmen
+    /// zero-width yang dianggap selesai — barisnya dipertahankan supaya index
+    /// segmen lain tidak bergeser, dan tidak dipakai lagi oleh siapa pun.
+    /// </summary>
+    internal bool MergeWithNext(int segmentIndex)
+    {
+        lock (_gate)
+        {
+            if (segmentIndex + 1 >= _segments.Count) return false;
+
+            Segment first = _segments[segmentIndex];
+            Segment next = _segments[segmentIndex + 1];
+            if (first.BytesDone != 0 || next.BytesDone != 0) return false;
+            if (next.Start != first.End) return false;
+
+            first.ExtendTo(next.End);
+            next.TruncateTo(next.Start); // zero-width: IsComplete, tidak akan diklaim
+            return true;
+        }
+    }
+
     internal void SetState(DownloadState next, string? error = null)
     {
         lock (_gate)
