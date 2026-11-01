@@ -4,6 +4,14 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <RootNamespace>SwiftGet.Core</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Test project perlu melihat anggota internal untuk menyiapkan kondisi resume. -->
+    <InternalsVisibleTo Include="SwiftGet.Tests" />
+  </ItemGroup>
 
 </Project>

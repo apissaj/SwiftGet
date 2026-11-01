@@ -1,0 +1,261 @@
+using SwiftGet.Core.Storage;
+
+namespace SwiftGet.Core.Downloads;
+
+/// <summary>
+/// Satu pekerjaan unduhan beserta state-nya. Kelas ini adalah tempat
+/// kebenaran untuk progres: segmen, status, dan manifest selalu konsisten satu
+/// sama lain dan diubah di bawah satu lock.
+/// <para>
+/// Worker segmen <b>tidak</b> memutasi <see cref="Segment"/> secara langsung;
+/// mereka memanggil <see cref="Advance"/> agar semua perubahan tercatat.
+/// </para>
+/// </summary>
+public sealed class DownloadTask
+{
+    private readonly object _gate = new();
+    private readonly List<Segment> _segments = new();
+    private readonly SpeedMeter _speed = new();
+    private DownloadState _state = DownloadState.Queued;
+    private string? _lastError;
+
+    public DownloadTask(string id, Uri url, string targetDirectory, string? fileName = null)
+    {
+        Id = id;
+        Url = url;
+        TargetDirectory = targetDirectory;
+        FileName = fileName ?? GuessFileName(url);
+    }
+
+    public string Id { get; }
+
+    public Uri Url { get; internal set; }
+
+    public string TargetDirectory { get; internal set; }
+
+    public string FileName { get; internal set; }
+
+    public long? TotalLength { get; internal set; }
+
+    public bool SupportsRanges { get; internal set; }
+
+    public string? ETag { get; internal set; }
+
+    public string? LastModifiedRaw { get; internal set; }
+
+    public Uri? FinalUri { get; internal set; }
+
+    public DownloadState State
+    {
+        get { lock (_gate) return _state; }
+    }
+
+    public string? LastError
+    {
+        get { lock (_gate) return _lastError; }
+    }
+
+    /// <summary>Path file akhir.</summary>
+    public string FinalPath => Path.Combine(TargetDirectory, FileName);
+
+    /// <summary>Salinan segmen; aman dibaca dari thread lain.</summary>
+    public IReadOnlyList<Segment> GetSegments()
+    {
+        lock (_gate) return _segments.ToArray();
+    }
+
+    internal void SetSegments(IEnumerable<Segment> segments)
+    {
+        lock (_gate)
+        {
+            _segments.Clear();
+            _segments.AddRange(segments);
+        }
+    }
+
+    internal void SetState(DownloadState next, string? error = null)
+    {
+        lock (_gate)
+        {
+            _state = next;
+            if (error is not null) _lastError = error;
+            if (next == DownloadState.Completed || next == DownloadState.Canceled)
+                _lastError = next == DownloadState.Canceled ? _lastError : null;
+        }
+    }
+
+    /// <summary>
+    /// Catat kemajuan satu segmen. Mengembalikan true bila segmen itu menjadi
+    /// selesai tepat pada pemanggilan ini.
+    /// </summary>
+    internal bool Advance(int segmentIndex, long bytesWritten, long expectedOffsetAfterWrite)
+    {
+        lock (_gate)
+        {
+            Segment target = _segments[segmentIndex];
+
+            // Invarian: bytes harus bertambah tepat sebesar yang dilaporkan.
+            if (expectedOffsetAfterWrite != target.Start + bytesWritten)
+                throw new InvalidOperationException(
+                    $"Progres segmen {segmentIndex} tidak konsisten: " +
+                    $"expected {expectedOffsetAfterWrite}, got {target.Start + bytesWritten}.");
+
+            target.BytesDone = bytesWritten;
+            _speed.Record(1);
+
+            return target.IsComplete;
+        }
+    }
+
+    internal bool Advance(int segmentIndex, long deltaBytes)
+    {
+        lock (_gate)
+        {
+            Segment target = _segments[segmentIndex];
+            long next = Math.Min(target.Length, target.BytesDone + deltaBytes);
+            target.BytesDone = next;
+            _speed.Record(deltaBytes);
+            return target.IsComplete;
+        }
+    }
+
+    /// <summary>Ambil snapshot progres untuk UI. Murah dan tidak memblokir lama.</summary>
+    public DownloadProgress Snapshot()
+    {
+        lock (_gate)
+        {
+            long done = 0;
+            int completed = 0;
+            foreach (var s in _segments)
+            {
+                done += s.BytesDone;
+                if (s.IsComplete) completed++;
+            }
+
+            return new DownloadProgress
+            {
+                Id = Id,
+                State = _state,
+                BytesDownloaded = done,
+                TotalBytes = TotalLength,
+                BytesPerSecond = _speed.GetRate(),
+                CompletedSegments = completed,
+                TotalSegments = _segments.Count,
+            };
+        }
+    }
+
+    /// <summary>Bangun manifest yang siap disimpan.</summary>
+    public DownloadManifest ToManifest()
+    {
+        lock (_gate)
+        {
+            return new DownloadManifest
+            {
+                Version = DownloadManifest.CurrentVersion,
+                Id = Id,
+                Url = Url.ToString(),
+                FinalUrl = FinalUri?.ToString(),
+                FileName = FileName,
+                TargetDirectory = TargetDirectory,
+                TotalLength = TotalLength,
+                SupportsRanges = SupportsRanges,
+                ETag = ETag,
+                LastModifiedRaw = LastModifiedRaw,
+                State = _state,
+                LastError = _lastError,
+                Segments = _segments.Select(s => new DownloadManifest.SegmentRecord
+                {
+                    Index = s.Index,
+                    Start = s.Start,
+                    End = s.End,
+                    BytesDone = s.BytesDone,
+                }).ToList(),
+            };
+        }
+    }
+
+    /// <summary>Bangun task dari manifest yang tersimpan (untuk resume).</summary>
+    public static DownloadTask FromManifest(DownloadManifest manifest)
+    {
+        var task = new DownloadTask(
+            manifest.Id,
+            new Uri(manifest.Url),
+            manifest.TargetDirectory,
+            manifest.FileName)
+        {
+            TotalLength = manifest.TotalLength,
+            SupportsRanges = manifest.SupportsRanges,
+            ETag = manifest.ETag,
+            LastModifiedRaw = manifest.LastModifiedRaw,
+            FinalUri = manifest.FinalUrl is null ? null : new Uri(manifest.FinalUrl),
+        };
+
+        task._lastError = manifest.LastError;
+
+        var segments = manifest.Segments
+            .OrderBy(r => r.Index)
+            .Select(r => new Segment(r.Index, r.Start, r.End) { BytesDone = r.BytesDone })
+            .ToList();
+
+        task.SetSegments(segments);
+        task.SetState(manifest.State == DownloadState.Downloading
+            ? DownloadState.Paused   // proses mati saat unduh -> dianggap paused
+            : manifest.State);
+
+        return task;
+    }
+
+    /// <summary>Tebak nama file dari URL bila server tidak menyebutkannya.</summary>
+    public static string GuessFileName(Uri url)
+    {
+        string path = url.AbsolutePath;
+        int slash = path.LastIndexOf('/');
+        string name = slash >= 0 ? path[(slash + 1)..] : path;
+
+        name = Uri.UnescapeDataString(name);
+        return string.IsNullOrWhiteSpace(name) ? "download" : Http.HeaderParsing.Sanitize(name);
+    }
+}
+
+/// <summary>
+/// Pengukur kecepatan dengan jendela geser sederhana. Satu instance per task
+/// sehingga angka kecepatan tidak tercampur antar unduhan.
+/// </summary>
+internal sealed class SpeedMeter
+{
+    private const int WindowSize = 20; // sampel
+    private readonly Queue<(long ticks, long bytes)> _samples = new();
+    private long _pendingBytes;
+
+    public void Record(long deltaBytes)
+    {
+        if (deltaBytes <= 0) return;
+
+        _pendingBytes += deltaBytes;
+        long now = Environment.TickCount64;
+
+        if (_samples.Count == 0 || now - _samples.Last().ticks >= 250)
+        {
+            _samples.Enqueue((now, _pendingBytes));
+            _pendingBytes = 0;
+            while (_samples.Count > WindowSize) _samples.Dequeue();
+        }
+    }
+
+    public double GetRate()
+    {
+        if (_samples.Count < 2) return 0;
+
+        var first = _samples.First();
+        var last = _samples.Last();
+
+        long elapsedMs = last.ticks - first.ticks;
+        if (elapsedMs <= 0) return 0;
+
+        long total = 0;
+        foreach (var (_, bytes) in _samples) total += bytes;
+
+        return total * 1000.0 / elapsedMs;
+    }
+}
