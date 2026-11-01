@@ -417,6 +417,10 @@ public sealed class DownloadSession : IAsyncDisposable
         await SaveManifestSafeAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Simpan manifest tanpa pernah melempar. Kegagalan penyimpanan tidak boleh
+    /// menggagalkan unduhan; manifest terakhir disimpan di akhir sesi.
+    /// </summary>
     private async Task SaveManifestSafeAsync(CancellationToken ct = default)
     {
         try

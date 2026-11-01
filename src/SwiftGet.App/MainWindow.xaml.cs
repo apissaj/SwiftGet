@@ -202,13 +202,11 @@ public partial class MainWindow : Window
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsWindow(_settings) { Owner = this };
-        if (dialog.ShowDialog() == true)
-        {
-            _settings.Save();
-            _clipboard.Enabled = _settings.WatchClipboard;
-            _viewModel.SetStatus(
-                "Pengaturan disimpan. Ubah jumlah koneksi berlaku pada unduhan berikutnya.");
-        }
+        if (dialog.ShowDialog() != true) return;
+
+        _settings.Save();
+        _clipboard.Enabled = _settings.WatchClipboard;
+        _viewModel.SetStatus(
+            "Pengaturan disimpan. Jumlah koneksi baru berlaku untuk unduhan berikutnya.");
     }
 }
-

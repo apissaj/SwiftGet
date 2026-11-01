@@ -223,11 +223,10 @@ public sealed class DownloadItemViewModel : ObservableObject
         OnPropertyChanged(nameof(FileName));
 
         var segments = Task.GetSegments();
-        // Total = semua segmen; selesai = yang sudah penuh.
-        TotalSegments = segments.Count;
         CompletedSegments = segments.Count(s => s.IsComplete);
+        // Set TotalSegments terakhir: ia memicu OnPropertyChanged(SegmentText).
+        TotalSegments = segments.Count;
         SegmentCount = segments.Count;
-        OnPropertyChanged(nameof(SegmentText));
     }
 }
 
@@ -400,6 +399,7 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
         _disposeCts.Dispose();
     }
 }
+
 
 
 

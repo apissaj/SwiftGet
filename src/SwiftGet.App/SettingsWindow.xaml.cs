@@ -4,11 +4,18 @@ using SwiftGet.App.Infrastructure;
 namespace SwiftGet.App;
 
 /// <summary>
-/// Dialog pengaturan. Mengubah salinan nilai lalu menerapkannya saat Simpan.
+/// Dialog pengaturan. Mengubah nilai di sini tidak langsung berlaku; perubahan
+/// diterapkan ke <see cref="AppSettings"/> saat tombol Simpan ditekan.
 /// </summary>
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
+
+    /// <summary>
+    /// False selama XAML masih dimuat. Event <c>ValueChanged</c> pada Slider
+    /// terpicu saat properti diset dari markup, yaitu sebelum kontrol lain ada.
+    /// </summary>
+    private bool _ready;
 
     public SettingsWindow(AppSettings settings)
     {
@@ -26,6 +33,7 @@ public partial class SettingsWindow : Window
         AutoStartBox.IsChecked = settings.StartDownloadsAutomatically;
         MinimizeToTrayBox.IsChecked = settings.MinimizeToTray;
 
+        _ready = true;
         UpdateLabels();
     }
 
@@ -37,7 +45,8 @@ public partial class SettingsWindow : Window
 
     private void UpdateLabels()
     {
-        if (ConcurrentLabel is null) return;
+        if (!_ready) return;
+        if (ConcurrentLabel is null || SegmentsLabel is null || PerHostLabel is null) return;
 
         ConcurrentLabel.Text = $"{(int)ConcurrentSlider.Value} unduhan sekaligus";
         SegmentsLabel.Text = $"{(int)SegmentsSlider.Value} bagian per berkas";
