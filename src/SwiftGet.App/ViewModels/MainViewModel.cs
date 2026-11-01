@@ -109,10 +109,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (!SetProperty(ref _isDark, value)) return;
             OnPropertyChanged(nameof(ThemeLabel));
+            OnPropertyChanged(nameof(ThemeModeLabel));
+            OnPropertyChanged(nameof(FollowsSystemTheme));
         }
     }
 
+    /// <summary>
+    /// True bila tema masih mengikuti Windows. Null berarti pengguna pernah
+    /// memilih sendiri, jadi perubahan tema Windows tidak boleh menimpanya.
+    /// </summary>
+    public bool? DarkThemeOverride => _settings.DarkTheme;
+
+    public bool FollowsSystemTheme => _settings.DarkTheme is null;
+
     public string ThemeLabel => IsDark ? "Tema terang" : "Tema gelap";
+
+    /// <summary>Label yang menjelaskan sumber tema saat ini.</summary>
+    public string ThemeModeLabel => FollowsSystemTheme
+        ? (IsDark ? "Ikuti Windows (gelap)" : "Ikuti Windows (terang)")
+        : (IsDark ? "Dipilih manual (gelap)" : "Dipilih manual (terang)");
 
     public DownloadItemViewModel? SelectedItem
     {
@@ -365,11 +380,47 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ToggleTheme()
     {
-        // ThemeManager dipanggil oleh pemilik tampilan (MainWindow), bukan dari sini:
-        // satu sumber kebenaran untuk membaca palet.
-        IsDark = !IsDark;
-        _settings.DarkTheme = IsDark;
+        // Satu klik bercycle tiga mode: gelap, terang, lalu kembali mengikuti
+        // Windows. Dengan begitu "ikuti sistem" selalu bisa dicapai tanpa
+        // perlu pengaturan terpisah.
+        if (_settings.DarkTheme is null)
+        {
+            // Belum pernah memilih: tetapkan mode yang berlawanan dengan sistem.
+            _settings.DarkTheme = !SystemThemeWatcher.IsSystemDark();
+        }
+        else if (_settings.DarkTheme != SystemThemeWatcher.IsSystemDark())
+        {
+            // Manual dan berbeda dari sistem: kembalikan ke sistem.
+            _settings.DarkTheme = null;
+        }
+        else
+        {
+            // Manual dan sama dengan sistem: pilih kebalikannya.
+            _settings.DarkTheme = !_settings.DarkTheme.Value;
+        }
+
+        IsDark = _settings.DarkTheme ?? SystemThemeWatcher.IsSystemDark();
         _settings.Save();
+
+        OnPropertyChanged(nameof(DarkThemeOverride));
+        OnPropertyChanged(nameof(ThemeModeLabel));
+        OnPropertyChanged(nameof(FollowsSystemTheme));
+    }
+
+    /// <summary>
+    /// Terapkan tema sistem yang baru terdeteksi. Hanya dipanggil oleh
+    /// pemantau tema, dan tidak melakukan apa pun bila pengguna sudah memilih
+    /// tema sendiri.
+    /// </summary>
+    public void ApplySystemTheme(bool dark)
+    {
+        if (_settings.DarkTheme is not null) return;
+        if (IsDark == dark) return;
+
+        IsDark = dark;
+        OnPropertyChanged(nameof(DarkThemeOverride));
+        OnPropertyChanged(nameof(ThemeModeLabel));
+        OnPropertyChanged(nameof(FollowsSystemTheme));
     }
 
     /// <summary>Dipanggil dari pemantau clipboard saat URL baru terdeteksi.</summary>
@@ -408,6 +459,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _cts.Dispose();
     }
 }
+
+
 
 
 

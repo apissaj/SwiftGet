@@ -42,13 +42,21 @@ public partial class App : Application
         Motion.Initialize();
 
         AppSettings settings = AppSettings.Load();
-        bool dark = settings.DarkTheme ?? IsSystemDark();
+
+        // Tema bawaan mengikuti Windows; bila pengguna pernah memilih sendiri,
+        // pilihan itu yang dipakai (R-21: pengguna diberi pilihan, bukan
+        // dipaksa salah satu mode).
+        bool dark = settings.DarkTheme ?? SystemThemeWatcher.IsSystemDark();
         ThemeManager.Apply(dark);
 
         _viewModel = new MainViewModel(settings, Dispatcher) { IsDark = dark };
 
         var window = new MainWindow(_viewModel, settings);
         MainWindow = window;
+
+        // Pemantau tema Windows dipasang di MainWindow: perubahan IsDark
+        // diterapkan ke palet di sana, jadi satu pemantau cukup.
+
         window.Show();
 
         StartShowSignalListener();
@@ -69,27 +77,6 @@ public partial class App : Application
         catch (Exception)
         {
             // Memberi sinyal gagal bukan alasan untuk crash.
-        }
-    }
-
-    /// <summary>
-    /// Baca preferensi tema Windows saat belum ada pilihan tersimpan.
-    /// Aplikasi bertema gelap secara eksplisit hanya karena alasan kuat
-    /// (R-21); SwiftGet mengikuti sistem, pengguna tetap bisa menggantinya.
-    /// </summary>
-    private static bool IsSystemDark()
-    {
-        try
-        {
-            object? value = Microsoft.Win32.Registry.GetValue(
-                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-                "AppsUseLightTheme", null);
-
-            return value is int light && light == 0;
-        }
-        catch (Exception)
-        {
-            return false;
         }
     }
 

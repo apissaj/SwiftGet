@@ -18,6 +18,16 @@ public partial class MainWindow : Window
     private bool _closeRequested;
     private bool _balloonShown;
 
+    /// <summary>
+    /// Ambang lebar untuk panel periksa menjadi lapisan. Di bawah nilai ini
+    /// daftar tidak cukup lebar untuk berbagi ruang dengan panel 304 px.
+    /// </summary>
+    private const double OverlayBreakpoint = 1000;
+
+    private SystemThemeWatcher? _themeWatcher;
+    private FocusTrap? _focusTrap;
+    private bool _inspectorOverlay;
+
     public MainWindow(MainViewModel viewModel, AppSettings settings)
     {
         InitializeComponent();
@@ -40,6 +50,7 @@ public partial class MainWindow : Window
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
+        SizeChanged += OnSizeChanged;
 
         // Fokus awal: kotak URL adalah focal point layar ini.
         Loaded += (_, _) => UrlField.Focus();
@@ -55,6 +66,15 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainViewModel.IsDark))
         {
             ThemeManager.Apply(_viewModel.IsDark);
+        }
+        else if (e.PropertyName == nameof(MainViewModel.IsInspectorOpen))
+        {
+            // Overlay sempit butuh kurungan fokus tepat saat panel terbuka.
+            UpdateScrim();
+
+            if (!_inspectorOverlay) return;
+            if (_viewModel.IsInspectorOpen) _focusTrap?.Arm();
+            else _focusTrap?.Disarm();
         }
     }
 
@@ -79,6 +99,36 @@ public partial class MainWindow : Window
         }
 
         SetupTray();
+        SetupWatchers();
+        UpdateInspectorLayout();
+    }
+
+    /// <summary>
+    /// Watcher tema dipasang setelah jendela punya handle, karena ia butuh
+    /// WM_SETTINGCHANGE dari jendela ini.
+    /// </summary>
+    private void SetupWatchers()
+    {
+        try
+        {
+            _themeWatcher = new SystemThemeWatcher(this);
+            _themeWatcher.ThemeChanged += OnSystemThemeChanged;
+        }
+        catch (Exception ex)
+        {
+            _viewModel.SetStatus("Pemantau tema tidak aktif: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Tema sistem hanya berlaku saat pengguna memilih "ikuti sistem".
+    /// Pilihan manual selalu menang, jadi tema yang dipilih tidak dilawan
+    /// oleh perubahan latar belakang.
+    /// </summary>
+    private void OnSystemThemeChanged(bool dark)
+    {
+        if (_viewModel.DarkThemeOverride is not null) return;
+        _viewModel.ApplySystemTheme(dark);
     }
 
     private void SetupTray()
@@ -234,7 +284,91 @@ public partial class MainWindow : Window
         _closeRequested = true;
         CleanupTray();
         _clipboard.Dispose();
+
+        _themeWatcher?.Dispose();
+        _themeWatcher = null;
         Application.Current.Shutdown();
+    }
+
+    /// <summary>Klik di luar panel menutup lapisan, seperti dialog.</summary>
+    private void InspectorScrim_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _viewModel.CloseInspectorCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e) => UpdateInspectorLayout();
+
+    /// <summary>
+    /// Di jendela lebar panel menempel di kolom kanan. Di jendela sempit ia
+    /// menjadi lapisan di atas daftar, dengan scrim dan kurungan fokus.
+    /// </summary>
+    private void UpdateInspectorLayout()
+    {
+        bool overlay = ActualWidth > 0 && ActualWidth < OverlayBreakpoint;
+
+        if (overlay == _inspectorOverlay)
+        {
+            // Lebar berubah tapi status tetap: cukup pastikan posisi benar.
+            ApplyInspectorColumns(overlay);
+            return;
+        }
+
+        _inspectorOverlay = overlay;
+        ApplyInspectorColumns(overlay);
+
+        if (overlay)
+        {
+            _focusTrap ??= new FocusTrap(this, InspectorPanel,
+                () => _viewModel.CloseInspectorCommand.Execute(null));
+
+            // Di mode lapisan, panel harus setinggi isi jendela.
+            InspectorPanel.Margin = new Thickness(0, 0, 0, 0);
+            InspectorPanel.VerticalAlignment = System.Windows.VerticalAlignment.Stretch;
+            InspectorPanel.MaxHeight = double.PositiveInfinity;
+
+            if (_viewModel.IsInspectorOpen) ArmInlineTrap();
+        }
+        else
+        {
+            _focusTrap?.Disarm();
+            InspectorPanel.Margin = new Thickness(0, 16, 20, 12);
+            InspectorPanel.VerticalAlignment = System.Windows.VerticalAlignment.Stretch;
+        }
+
+        UpdateScrim();
+    }
+
+    private void ApplyInspectorColumns(bool overlay)
+    {
+        if (overlay)
+        {
+            Grid.SetColumn(InspectorPanel, 0);
+            Grid.SetColumnSpan(InspectorPanel, 2);
+            InspectorPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+            System.Windows.Controls.Panel.SetZIndex(InspectorPanel, 10);
+            InspectorPanel.Width = 304;
+        }
+        else
+        {
+            Grid.SetColumn(InspectorPanel, 1);
+            Grid.SetColumnSpan(InspectorPanel, 1);
+            InspectorPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+            System.Windows.Controls.Panel.SetZIndex(InspectorPanel, 0);
+            InspectorPanel.Width = 304;
+        }
+    }
+
+    private void ArmInlineTrap()
+    {
+        if (_focusTrap is null) return;
+        _focusTrap.Arm();
+    }
+
+    private void UpdateScrim()
+    {
+        bool show = _inspectorOverlay && _viewModel.IsInspectorOpen;
+        InspectorScrim.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
@@ -247,5 +381,6 @@ public partial class MainWindow : Window
         _viewModel.SetStatus("Pengaturan disimpan, berlaku untuk unduhan berikutnya");
     }
 }
+
 
 

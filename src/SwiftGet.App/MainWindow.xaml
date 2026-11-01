@@ -1,4 +1,4 @@
-﻿<Window x:Class="SwiftGet.App.MainWindow"
+<Window x:Class="SwiftGet.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:themes="clr-namespace:SwiftGet.App.Themes"
@@ -286,7 +286,7 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <!-- Keadaan kosong menggantikan daftar sepenuhnya (DESIGN.md bagian 11) -->
+                        <!-- Keadaan kosong: belum ada unduhan -->
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
                                     Visibility="{Binding Downloads.IsEmpty, Converter={StaticResource BoolToVisibility}}">
                             <TextBlock Text="Belum ada unduhan"
@@ -305,7 +305,14 @@
             </Grid>
 
             <!-- Kolom kanan: panel periksa -->
-            <Border Grid.Column="1"
+            <Border x:Name="InspectorScrim"
+                    Grid.Column="0" Grid.ColumnSpan="2"
+                    Background="#33000000"
+                    Visibility="Collapsed"
+                    MouseLeftButtonDown="InspectorScrim_Click" />
+
+            <Border x:Name="InspectorPanel"
+                    Grid.Column="1"
                     Width="304"
                     Margin="0,16,20,12"
                     Background="{DynamicResource SurfaceBrush}"
