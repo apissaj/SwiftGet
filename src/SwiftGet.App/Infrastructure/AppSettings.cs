@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace SwiftGet.App.Infrastructure;
 
@@ -22,6 +22,12 @@ public sealed class AppSettings
     public bool StartDownloadsAutomatically { get; set; } = true;
 
     public bool MinimizeToTray { get; set; } = true;
+
+    /// <summary>
+    /// Tema terakhir yang dipilih pengguna. Null berarti ikuti tema Windows
+    /// pada saat aplikasi dijalankan.
+    /// </summary>
+    public bool? DarkTheme { get; set; }
 
     /// <summary>Folder profil: konfigurasi, state unduhan, log.</summary>
     public static string ProfileDirectory { get; } =
@@ -89,3 +95,4 @@ public sealed class AppSettings
         }
     }
 }
+

@@ -4,52 +4,64 @@ using System.Windows.Media;
 namespace SwiftGet.App.Infrastructure;
 
 /// <summary>
-/// Tema warna terang/gelap. Nilai dipasang sebagai resource aplikasi sehingga
-/// XAML cukup memakai <c>DynamicResource</c>.
+/// Tema warna terang dan gelap.
+/// <para>
+/// Nilai di sini adalah sumber kebenaran palet; `DESIGN.md` bagian 4 memuat
+/// alasan tiap warna. Kontras setiap pasangan dikunci oleh
+/// <c>ThemeContrastTests</c>, jadi mengubah nilai tanpa mengukur ulang akan
+/// menggagalkan test.
+/// </para>
 /// </summary>
 public static class ThemeManager
 {
     public static bool IsDark { get; private set; }
 
+    /// <summary>Brushes teks yang dipakai di atas tombol beraksen, per tema.</summary>
+    public const string LightAccentInk = "#FFFFFF";
+    public const string DarkAccentInk = "#0B201C";
+
+    public static string AccentInk => IsDark ? DarkAccentInk : LightAccentInk;
+
     public static void Apply(bool dark)
     {
         IsDark = dark;
 
-        var resources = Application.Current.Resources;
+        ResourceDictionary resources = Application.Current.Resources;
+
 
         if (dark)
         {
-            Set(resources, "AppBackgroundBrush", "#1E1E22");
-            Set(resources, "SurfaceBrush", "#26262B");
-            Set(resources, "SurfaceAltBrush", "#2E2E34");
-            Set(resources, "BorderBrush", "#3A3A42");
-            Set(resources, "TextPrimaryBrush", "#F0F0F4");
-            Set(resources, "TextSecondaryBrush", "#A0A0AC");
-            // Aksen mode gelap digelapkan dari #4C8DFF: putih di atasnya hanya
-            // 3,20:1 (gagal AA). #366FE0 mencapai 4,66:1 untuk teks tombol.
-            Set(resources, "AccentBrush", "#366FE0");
-            Set(resources, "AccentHoverBrush", "#2F63CC");
+            Set(resources, "AppBackgroundBrush", "#141518");
+            Set(resources, "SurfaceBrush", "#1B1D21");
+            Set(resources, "SurfaceAltBrush", "#24262B");
+            Set(resources, "BorderBrush", "#33363C");
+            Set(resources, "TextPrimaryBrush", "#EDEDEF");
+            Set(resources, "TextSecondaryBrush", "#9B9EA6");
+            Set(resources, "AccentBrush", "#3FB39C");
+            Set(resources, "AccentHoverBrush", "#57C7B0");
+            Set(resources, "AccentInkBrush", DarkAccentInk);
             Set(resources, "SuccessBrush", "#3DD68C");
-            Set(resources, "DangerBrush", "#FF6B6B");
+            Set(resources, "DangerBrush", "#FF7A6E");
             Set(resources, "WarningBrush", "#FFB84D");
-            Set(resources, "TrackBrush", "#1A1A1E");
+            Set(resources, "TrackBrush", "#111214");
+            Set(resources, "GridLineBrush", "#2A2D32");
         }
         else
         {
-            Set(resources, "AppBackgroundBrush", "#F5F6F8");
+            Set(resources, "AppBackgroundBrush", "#F7F7F4");
             Set(resources, "SurfaceBrush", "#FFFFFF");
-            Set(resources, "SurfaceAltBrush", "#F0F1F4");
-            Set(resources, "BorderBrush", "#DFE1E6");
-            Set(resources, "TextPrimaryBrush", "#1A1A20");
-            Set(resources, "TextSecondaryBrush", "#6B6B76");
-            Set(resources, "AccentBrush", "#2D6CDF");
-            Set(resources, "AccentHoverBrush", "#245BB8");
-            // Hijau/kuning jenuh gagal AA untuk teks kecil di atas putih
-            // (3,21:1). Versi gelap ini lolos di surface maupun app background.
+            Set(resources, "SurfaceAltBrush", "#EFEFEA");
+            Set(resources, "BorderBrush", "#E2E2DB");
+            Set(resources, "TextPrimaryBrush", "#16171A");
+            Set(resources, "TextSecondaryBrush", "#5F6169");
+            Set(resources, "AccentBrush", "#0F6B5C");
+            Set(resources, "AccentHoverBrush", "#0B5548");
+            Set(resources, "AccentInkBrush", LightAccentInk);
             Set(resources, "SuccessBrush", "#0F7A46");
-            Set(resources, "DangerBrush", "#C42B2B");
+            Set(resources, "DangerBrush", "#B3261E");
             Set(resources, "WarningBrush", "#8A5B00");
-            Set(resources, "TrackBrush", "#E6E8EC");
+            Set(resources, "TrackBrush", "#E6E6DF");
+            Set(resources, "GridLineBrush", "#EFEFEA");
         }
     }
 

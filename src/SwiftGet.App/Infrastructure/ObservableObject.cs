@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 namespace SwiftGet.App.Infrastructure;
@@ -39,7 +39,7 @@ public sealed class RelayCommand : System.Windows.Input.ICommand
     }
 
     public RelayCommand(Action execute, Func<bool>? canExecute = null)
-        : this(_ => execute(), canExecute is null ? null : _ => canExecute())
+        : this(_ => execute(), canExecute is null ? null : new Func<object?, bool>(_ => canExecute()))
     {
     }
 
@@ -68,7 +68,7 @@ public sealed class AsyncRelayCommand : System.Windows.Input.ICommand
     }
 
     public AsyncRelayCommand(Func<System.Threading.Tasks.Task> execute, Func<bool>? canExecute = null)
-        : this(_ => execute(), canExecute is null ? null : _ => canExecute())
+        : this(_ => execute(), canExecute is null ? null : new Func<object?, bool>(_ => canExecute()))
     {
     }
 
@@ -95,3 +95,4 @@ public sealed class AsyncRelayCommand : System.Windows.Input.ICommand
 
     public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
+

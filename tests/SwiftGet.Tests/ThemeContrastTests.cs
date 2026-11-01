@@ -4,87 +4,130 @@ using Xunit;
 namespace SwiftGet.Tests;
 
 /// <summary>
-/// Mengunci pasangan warna tema ke ambang WCAG AA. Bila palet diubah dan
-/// kontras turun, test ini gagal sebelum perubahan itu sampai ke pengguna.
+/// Mengunci setiap pasangan warna tema ke ambang WCAG AA.
+/// <para>
+/// Nilai warna di sini harus sama dengan `ThemeManager` dan `DESIGN.md` bagian 4.
+/// Mengubah palet tanpa mengukur ulang akan menggagalkan test ini, dan itu
+/// memang tujuannya.
+/// </para>
 /// </summary>
 public sealed class ThemeContrastTests
 {
-    // Mode terang
+    // Mode terang (DESIGN.md bagian 4)
+    private const string LightCanvas = "#F7F7F4";
     private const string LightSurface = "#FFFFFF";
-    private const string LightAppBackground = "#F5F6F8";
-    private const string LightTextPrimary = "#1A1A20";
-    private const string LightTextSecondary = "#6B6B76";
-    private const string LightAccent = "#2D6CDF";
+    private const string LightSurfaceAlt = "#EFEFEA";
+    private const string LightText = "#16171A";
+    private const string LightTextSecondary = "#5F6169";
+    private const string LightAccent = "#0F6B5C";
+    private const string LightAccentHover = "#0B5548";
+    private const string LightAccentInk = "#FFFFFF";
     private const string LightSuccess = "#0F7A46";
-    private const string LightDanger = "#C42B2B";
+    private const string LightDanger = "#B3261E";
     private const string LightWarning = "#8A5B00";
 
-    // Mode gelap
-    private const string DarkSurface = "#26262B";
-    private const string DarkAppBackground = "#1E1E22";
-    private const string DarkTextPrimary = "#F0F0F4";
-    private const string DarkTextSecondary = "#A0A0AC";
-    private const string DarkAccent = "#366FE0";
+    // Mode gelap (DESIGN.md bagian 4)
+    private const string DarkCanvas = "#141518";
+    private const string DarkSurface = "#1B1D21";
+    private const string DarkSurfaceAlt = "#24262B";
+    private const string DarkText = "#EDEDEF";
+    private const string DarkTextSecondary = "#9B9EA6";
+    private const string DarkAccent = "#3FB39C";
+    private const string DarkAccentHover = "#57C7B0";
+    private const string DarkAccentInk = "#0B201C";
     private const string DarkSuccess = "#3DD68C";
-    private const string DarkDanger = "#FF6B6B";
+    private const string DarkDanger = "#FF7A6E";
     private const string DarkWarning = "#FFB84D";
 
+    public static TheoryData<string, string, string> LightPairs => new()
+    {
+        { LightText, LightSurface, "tinta di permukaan" },
+        { LightText, LightCanvas, "tinta di kanvas" },
+        { LightText, LightSurfaceAlt, "tinta di permukaan alt" },
+        { LightTextSecondary, LightSurface, "tinta sekunder di permukaan" },
+        { LightTextSecondary, LightCanvas, "tinta sekunder di kanvas" },
+        { LightTextSecondary, LightSurfaceAlt, "tinta sekunder di permukaan alt" },
+        { LightSuccess, LightSurface, "sukses di permukaan" },
+        { LightSuccess, LightCanvas, "sukses di kanvas" },
+        { LightDanger, LightSurface, "bahaya di permukaan" },
+        { LightDanger, LightCanvas, "bahaya di kanvas" },
+        { LightWarning, LightSurface, "peringatan di permukaan" },
+        { LightWarning, LightCanvas, "peringatan di kanvas" },
+    };
+
+    public static TheoryData<string, string, string> DarkPairs => new()
+    {
+        { DarkText, DarkSurface, "tinta di permukaan" },
+        { DarkText, DarkCanvas, "tinta di kanvas" },
+        { DarkText, DarkSurfaceAlt, "tinta di permukaan alt" },
+        { DarkTextSecondary, DarkSurface, "tinta sekunder di permukaan" },
+        { DarkTextSecondary, DarkCanvas, "tinta sekunder di kanvas" },
+        { DarkTextSecondary, DarkSurfaceAlt, "tinta sekunder di permukaan alt" },
+        { DarkSuccess, DarkSurface, "sukses di permukaan" },
+        { DarkSuccess, DarkCanvas, "sukses di kanvas" },
+        { DarkDanger, DarkSurface, "bahaya di permukaan" },
+        { DarkDanger, DarkCanvas, "bahaya di kanvas" },
+        { DarkWarning, DarkSurface, "peringatan di permukaan" },
+        { DarkWarning, DarkCanvas, "peringatan di kanvas" },
+    };
+
     [Theory]
-    [InlineData(LightTextPrimary, LightSurface)]
-    [InlineData(LightTextPrimary, LightAppBackground)]
-    [InlineData(LightTextSecondary, LightSurface)]
-    [InlineData(LightTextSecondary, LightAppBackground)]
-    [InlineData(LightSuccess, LightSurface)]
-    [InlineData(LightSuccess, LightAppBackground)]
-    [InlineData(LightDanger, LightSurface)]
-    [InlineData(LightDanger, LightAppBackground)]
-    [InlineData(LightWarning, LightSurface)]
-    [InlineData(LightWarning, LightAppBackground)]
-    public void LightMode_Text_Passes_AA(string foreground, string background)
+    [MemberData(nameof(LightPairs))]
+    public void LightMode_Text_Meets_AA(string foreground, string background, string label)
     {
         double ratio = Contrast.Ratio(foreground, background);
         Assert.True(ratio >= Contrast.NormalTextMinimum,
-            $"Kontras {foreground} di atas {background} hanya {ratio:F2}:1, minimum 4,5:1.");
+            $"[terang] {label}: {foreground} di atas {background} = {ratio:F2}:1, minimum 4,5:1.");
     }
 
     [Theory]
-    [InlineData(DarkTextPrimary, DarkSurface)]
-    [InlineData(DarkTextPrimary, DarkAppBackground)]
-    [InlineData(DarkTextSecondary, DarkSurface)]
-    [InlineData(DarkTextSecondary, DarkAppBackground)]
-    [InlineData(DarkSuccess, DarkSurface)]
-    [InlineData(DarkSuccess, DarkAppBackground)]
-    [InlineData(DarkDanger, DarkSurface)]
-    [InlineData(DarkDanger, DarkAppBackground)]
-    [InlineData(DarkWarning, DarkSurface)]
-    [InlineData(DarkWarning, DarkAppBackground)]
-    public void DarkMode_Text_Passes_AA(string foreground, string background)
+    [MemberData(nameof(DarkPairs))]
+    public void DarkMode_Text_Meets_AA(string foreground, string background, string label)
     {
         double ratio = Contrast.Ratio(foreground, background);
         Assert.True(ratio >= Contrast.NormalTextMinimum,
-            $"Kontras {foreground} di atas {background} hanya {ratio:F2}:1, minimum 4,5:1.");
+            $"[gelap] {label}: {foreground} di atas {background} = {ratio:F2}:1, minimum 4,5:1.");
     }
 
     [Fact]
-    public void Button_Label_Passes_AA_In_Both_Themes()
+    public void Button_Label_Meets_AA_In_Light_Theme()
     {
-        // Putih di atas aksen: ini teks normal, bukan teks besar.
-        Assert.True(Contrast.Passes("#FFFFFF", LightAccent),
-            $"Putih di atas aksen terang: {Contrast.Ratio("#FFFFFF", LightAccent):F2}:1");
-        Assert.True(Contrast.Passes("#FFFFFF", DarkAccent),
-            $"Putih di atas aksen gelap: {Contrast.Ratio("#FFFFFF", DarkAccent):F2}:1");
+        double ratio = Contrast.Ratio(LightAccentInk, LightAccent);
+        Assert.True(ratio >= Contrast.NormalTextMinimum,
+            $"Putih di atas aksen terang = {ratio:F2}:1.");
+
+        double hover = Contrast.Ratio(LightAccentInk, LightAccentHover);
+        Assert.True(hover >= Contrast.NormalTextMinimum,
+            $"Putih di atas aksen hover terang = {hover:F2}:1.");
     }
 
     [Fact]
-    public void Accent_Is_Visible_Against_Surface()
+    public void Button_Label_Meets_AA_In_Dark_Theme()
     {
-        // Aksen dipakai juga sebagai ikon/garis: butuh 3:1 terhadap latar.
-        Assert.True(Contrast.Passes(LightAccent, LightSurface, Contrast.LargeTextMinimum));
-        Assert.True(Contrast.Passes(DarkAccent, DarkSurface, Contrast.LargeTextMinimum));
+        // Mode gelap memakai tinta gelap di atas teal terang, bukan putih.
+        // Putih di atas #3FB39C hanya sekitar 2,4:1 dan gagal.
+        double ratio = Contrast.Ratio(DarkAccentInk, DarkAccent);
+        Assert.True(ratio >= Contrast.NormalTextMinimum,
+            $"Tinta gelap di atas aksen gelap = {ratio:F2}:1.");
+
+        double whiteWouldFail = Contrast.Ratio("#FFFFFF", DarkAccent);
+        Assert.True(whiteWouldFail < Contrast.NormalTextMinimum,
+            $"Asumsi desain salah: putih di atas aksen gelap ternyata {whiteWouldFail:F2}:1, " +
+            "jadi tinta gelap tidak lagi diperlukan. Perbarui DESIGN.md bagian 4.");
     }
 
     [Fact]
-    public void Ratio_Is_Order_Independent_And_Extremes_Are_Correct()
+    public void Accent_Is_Visible_Against_Surfaces()
+    {
+        // Aksen juga dipakai untuk batang segmen dan garis grafik: butuh 3:1.
+        Assert.True(Contrast.Passes(LightAccent, LightSurface, Contrast.LargeTextMinimum),
+            $"Aksen terang di permukaan = {Contrast.Ratio(LightAccent, LightSurface):F2}:1.");
+        Assert.True(Contrast.Passes(DarkAccent, DarkSurface, Contrast.LargeTextMinimum),
+            $"Aksen gelap di permukaan = {Contrast.Ratio(DarkAccent, DarkSurface):F2}:1.");
+    }
+
+    [Fact]
+    public void Ratio_Is_Symmetric_And_Extremes_Are_Exact()
     {
         Assert.Equal(Contrast.Ratio("#000000", "#FFFFFF"), Contrast.Ratio("#FFFFFF", "#000000"), 6);
         Assert.Equal(21.0, Contrast.Ratio("#000000", "#FFFFFF"), 2);
@@ -92,10 +135,9 @@ public sealed class ThemeContrastTests
     }
 
     [Fact]
-    public void Unrounded_Ratio_Does_Not_Round_Up_To_A_Pass()
+    public void ThemeManager_AccentInk_Follows_The_Measured_Palette()
     {
-        // 4,49 tidak boleh dianggap lolos hanya karena mendekati 4,5.
-        double ratio = Contrast.Ratio(LightTextSecondary, LightSurface);
-        Assert.True(ratio >= Contrast.NormalTextMinimum);
+        Assert.Equal(LightAccentInk, ThemeManager.LightAccentInk);
+        Assert.Equal(DarkAccentInk, ThemeManager.DarkAccentInk);
     }
 }

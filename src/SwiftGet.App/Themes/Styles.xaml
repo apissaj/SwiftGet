@@ -2,32 +2,44 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:themes="clr-namespace:SwiftGet.App.Themes">
 
+    <!--
+        Token di berkas ini mengikuti DESIGN.md.
+        Angka yang dipakai di sini (radius, jarak, ukuran huruf) berasal dari
+        bagian 5 dan 6; mengubahnya berarti mengubah dokumen juga.
+    -->
+
     <!-- ===== Warna dasar (ditimpa ThemeManager saat runtime) ===== -->
-    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F5F6F8" />
+    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F7F7F4" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F0F1F4" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#DFE1E6" />
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1A1A20" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#6B6B76" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#2D6CDF" />
-    <SolidColorBrush x:Key="AccentHoverBrush" Color="#4A85F0" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="#1FA463" />
-    <SolidColorBrush x:Key="DangerBrush" Color="#D93B3B" />
-    <SolidColorBrush x:Key="WarningBrush" Color="#C88000" />
-    <SolidColorBrush x:Key="TrackBrush" Color="#E6E8EC" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#EFEFEA" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#E2E2DB" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#16171A" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5F6169" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#0F6B5C" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#0B5548" />
+    <SolidColorBrush x:Key="AccentInkBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#0F7A46" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#B3261E" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#8A5B00" />
+    <SolidColorBrush x:Key="TrackBrush" Color="#E6E6DF" />
+    <SolidColorBrush x:Key="GridLineBrush" Color="#EFEFEA" />
 
     <!-- ===== Tipografi ===== -->
-    <FontFamily x:Key="AppFont">Segoe UI</FontFamily>
+    <FontFamily x:Key="AppFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="NumericFont">Cascadia Mono, Consolas, monospace</FontFamily>
 
-    <!-- ===== Tombol utama ===== -->
+    <!-- ===== Tombol utama =====
+         Teks memakai AccentInkBrush, bukan putih tetap: mode gelap memakai
+         tinta gelap di atas teal terang agar lolos WCAG AA. -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentInkBrush}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="16,8" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="16,9" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -41,8 +53,12 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentHoverBrush}" />
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.38" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -51,7 +67,7 @@
         </Setter>
     </Style>
 
-    <!-- ===== Tombol sekunder (ikon/aksi baris) ===== -->
+    <!-- ===== Tombol sekunder ===== -->
     <Style x:Key="GhostButton" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -60,6 +76,7 @@
         <Setter Property="Padding" Value="12,7" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -75,14 +92,25 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.38" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- ===== Tombol ikon (hanya ikon, wajib punya ToolTip) ===== -->
+    <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
     </Style>
 
     <!-- ===== Kotak input ===== -->
@@ -92,7 +120,8 @@
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="12,9" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
@@ -107,8 +136,9 @@
                                       VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsFocused" Value="True">
+                        <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -116,9 +146,9 @@
         </Setter>
     </Style>
 
-    <!-- ===== Progress bar kustom ===== -->
+    <!-- ===== Rel progres ===== -->
     <Style x:Key="ThinProgressBar" TargetType="ProgressBar">
-        <Setter Property="Height" Value="6" />
+        <Setter Property="Height" Value="4" />
         <Setter Property="Minimum" Value="0" />
         <Setter Property="Maximum" Value="100" />
         <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
@@ -126,13 +156,13 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ProgressBar">
-                    <Border Background="{TemplateBinding Background}" CornerRadius="3">
+                    <Border Background="{TemplateBinding Background}" CornerRadius="2">
                         <Grid>
                             <Border x:Name="PART_Track" Background="Transparent" />
                             <Border x:Name="PART_Indicator"
                                     HorizontalAlignment="Left"
                                     Background="{TemplateBinding Foreground}"
-                                    CornerRadius="3" />
+                                    CornerRadius="2" />
                         </Grid>
                     </Border>
                 </ControlTemplate>
@@ -140,12 +170,12 @@
         </Setter>
     </Style>
 
-    <!-- ===== Gaya kartu ===== -->
+    <!-- ===== Kartu dan panel ===== -->
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="CornerRadius" Value="10" />
         <Setter Property="Padding" Value="16" />
     </Style>
 
@@ -153,6 +183,7 @@
     <Style x:Key="Caption" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="FontSize" Value="11" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style x:Key="Body" TargetType="TextBlock">
@@ -162,68 +193,106 @@
 
     <Style x:Key="Heading" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
-    <!-- ===== DataGrid ringan ===== -->
-    <Style x:Key="DownloadGrid" TargetType="DataGrid">
-        <Setter Property="AutoGenerateColumns" Value="False" />
-        <Setter Property="CanUserAddRows" Value="False" />
-        <Setter Property="CanUserDeleteRows" Value="False" />
-        <Setter Property="CanUserResizeRows" Value="False" />
-        <Setter Property="IsReadOnly" Value="True" />
-        <Setter Property="SelectionMode" Value="Single" />
-        <Setter Property="SelectionUnit" Value="FullRow" />
-        <Setter Property="HeadersVisibility" Value="Column" />
-        <Setter Property="GridLinesVisibility" Value="None" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="RowHeight" Value="62" />
-        <Setter Property="ColumnHeaderHeight" Value="34" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="RowBackground" Value="Transparent" />
-        <Setter Property="AlternatingRowBackground" Value="Transparent" />
-        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BorderBrush}" />
-    </Style>
-
-    <Style x:Key="GridHeader" TargetType="DataGridColumnHeader">
-        <Setter Property="Background" Value="Transparent" />
+    <Style x:Key="SectionLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Padding" Value="8,0" />
-        <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="HorizontalContentAlignment" Value="Left" />
     </Style>
 
-    <Style x:Key="GridRow" TargetType="DataGridRow">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="BorderBrush" Value="{DynamicResource SurfaceAltBrush}" />
-        <Style.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-            </Trigger>
-            <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-            </Trigger>
-        </Style.Triggers>
+    <!-- Angka memakai monospace agar lebar tidak bergoyang saat nilainya berubah. -->
+    <Style x:Key="Numeric" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource NumericFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
 
-    <Style x:Key="GridCell" TargetType="DataGridCell">
+    <Style x:Key="NumericLarge" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource NumericFont}" />
+        <Setter Property="FontSize" Value="19" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <!-- ===== Daftar unduhan (ListBox, bukan DataGrid) =====
+         Baris punya dua bentuk (mode penuh dan ringkas), jadi list dengan
+         template baris lebih tepat daripada kolom tabel tetap. -->
+    <Style x:Key="DownloadList" TargetType="ListBox">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="Padding" Value="8,0" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+        <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+        <Setter Property="SelectionMode" Value="Single" />
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="Bd"
+                                        Background="Transparent"
+                                        BorderBrush="Transparent"
+                                        BorderThickness="0,0,0,1">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===== Scrollbar tipis ===== -->
+    <Style x:Key="ThinScrollBarThumb" TargetType="Thumb">
         <Setter Property="Template">
             <Setter.Value>
-                <ControlTemplate TargetType="DataGridCell">
-                    <Border Background="{TemplateBinding Background}"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter VerticalAlignment="Center" />
-                    </Border>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Background="{DynamicResource BorderBrush}" CornerRadius="3" Margin="2,0" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="Width" Value="10" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Grid Background="Transparent">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource ThinScrollBarThumb}" />
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" />
+                            </Track.IncreaseRepeatButton>
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" />
+                            </Track.DecreaseRepeatButton>
+                        </Track>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

@@ -1,28 +1,28 @@
-<Window x:Class="SwiftGet.App.MainWindow"
+﻿<Window x:Class="SwiftGet.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:themes="clr-namespace:SwiftGet.App.Themes"
-        xmlns:vm="clr-namespace:SwiftGet.App.ViewModels"
         Title="SwiftGet"
-        Height="680" Width="1080"
-        MinHeight="480" MinWidth="860"
+        Height="720" Width="1160"
+        MinHeight="520" MinWidth="900"
         Background="{DynamicResource AppBackgroundBrush}"
-        FontFamily="{DynamicResource AppFont}"
+        FontFamily="{StaticResource AppFont}"
+        TextOptions.TextFormattingMode="Ideal"
         WindowStartupLocation="CenterScreen">
 
-    <Grid Margin="0">
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ===== Header ===== -->
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
-                Padding="20,14">
+        <!-- ===================== Header ===================== -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="20,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -30,229 +30,432 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
+                <!-- Mark: panah unduhan sederhana, digambar sendiri (DESIGN.md bagian 14) -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="28" Height="28" CornerRadius="7"
-                            Background="{DynamicResource AccentBrush}" Margin="0,0,10,0">
-                        <TextBlock Text="S" Foreground="White" FontSize="17" FontWeight="Bold"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Viewbox Width="26" Height="26" Margin="0,0,10,0">
+                        <Canvas Width="24" Height="24">
+                            <Ellipse Width="24" Height="24" Fill="{DynamicResource AccentBrush}" />
+                            <Path Stroke="{DynamicResource AccentInkBrush}" StrokeThickness="1.8"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M 12,6 L 12,15 M 8.2,11.6 L 12,15.4 L 15.8,11.6 M 7.5,18 L 16.5,18" />
+                        </Canvas>
+                    </Viewbox>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="SwiftGet" FontSize="16" FontWeight="Bold"
+                        <TextBlock Text="SwiftGet" FontSize="15" FontWeight="Bold"
                                    Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="Unduhan segmented paralel" Style="{StaticResource Caption}" />
+                        <TextBlock Text="Unduhan dipecah, diunduh bersamaan"
+                                   Style="{StaticResource Caption}" />
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Ringkasan kecepatan & grafik -->
+                <!-- Kecepatan total + sparkline: satu pertanyaan, satu grafik (DESIGN.md bagian 9) -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <StackPanel Margin="0,0,14,0" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,12,0">
                         <TextBlock Text="{Binding Downloads.TotalSpeedText}"
-                                   FontSize="15" FontWeight="SemiBold"
-                                   HorizontalAlignment="Right"
-                                   Foreground="{DynamicResource SuccessBrush}" />
+                                   Style="{StaticResource NumericLarge}"
+                                   HorizontalAlignment="Right" />
                         <TextBlock Text="{Binding Downloads.SummaryText}"
                                    Style="{StaticResource Caption}"
                                    HorizontalAlignment="Right" />
                     </StackPanel>
 
-                    <Border Width="180" Height="40" Background="{DynamicResource SurfaceAltBrush}"
-                            CornerRadius="6" Padding="6,4" Margin="0,0,12,0">
+                    <Border Width="180" Height="42"
+                            Background="{DynamicResource SurfaceAltBrush}"
+                            CornerRadius="6" Padding="6,6" Margin="0,0,10,0"
+                            ToolTip="Kecepatan total 30 detik terakhir">
                         <themes:SpeedGraph ValuesSource="{Binding Downloads.SpeedHistory}" />
                     </Border>
 
-                    <Button Content="Tema" Style="{StaticResource GhostButton}"
-                            Command="{Binding ToggleThemeCommand}" ToolTip="Ganti tema terang/gelap" />
+                    <Button Style="{StaticResource IconButton}"
+                            Command="{Binding ToggleThemeCommand}"
+                            ToolTip="{Binding ThemeLabel}"
+                            AutomationProperties.Name="{Binding ThemeLabel}">
+                        <Path x:Name="ThemeGlyph"
+                              Width="14" Height="14"
+                              Stroke="{DynamicResource TextPrimaryBrush}"
+                              StrokeThickness="1.6"
+                              Data="M 7,1 A 6,6 0 1 0 7,13 A 4.6,4.6 0 1 1 7,1 Z" />
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- ===== Baris tambah URL (paling penting, jadi paling atas) ===== -->
-        <Border Grid.Row="1" Padding="20,16,20,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+        <!-- ===================== Isi ===================== -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-                <TextBox Grid.Column="0"
-                         Style="{StaticResource UrlTextBox}"
-                         Text="{Binding NewUrl, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="Tempel URL berkas (http/https). Bisa juga menempel dari clipboard.">
-                    <TextBox.InputBindings>
-                        <KeyBinding Key="Return" Command="{Binding AddCommand}" />
-                    </TextBox.InputBindings>
-                </TextBox>
+            <!-- Kolom kiri: input + daftar -->
+            <Grid Grid.Column="0" Margin="20,16,20,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                <Button Grid.Column="1" Content="Unduh"
-                        Style="{StaticResource PrimaryButton}"
-                        Margin="10,0,0,0"
-                        Command="{Binding AddCommand}" />
+                <!-- Input URL: focal point tunggal layar ini -->
+                <Grid Grid.Row="0" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <Button Grid.Column="2" Content="Tambah ke antrean"
-                        Style="{StaticResource GhostButton}"
-                        Margin="8,0,0,0"
-                        Command="{Binding AddWithoutStartCommand}" />
+                    <TextBox x:Name="UrlField" Grid.Column="0"
+                               Style="{StaticResource UrlTextBox}"
+                               Text="{Binding NewUrl, UpdateSourceTrigger=PropertyChanged}"
+                               FontFamily="{StaticResource NumericFont}"
+                               ToolTip="Tempel URL berkas (http atau https), lalu tekan Enter">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding AddCommand}" />
+                        </TextBox.InputBindings>
+                    </TextBox>
 
-                <Button Grid.Column="3" Content="Buka folder"
-                        Style="{StaticResource GhostButton}"
-                        Margin="8,0,0,0"
-                        Command="{Binding OpenFolderCommand}"
-                        ToolTip="{Binding DownloadDir}" />
+                    <Button Grid.Column="1" Content="Unduh"
+                            Style="{StaticResource PrimaryButton}"
+                            Margin="10,0,0,0"
+                            MinWidth="92"
+                            Command="{Binding AddCommand}" />
+
+                    <Button Grid.Column="2" Content="Ke antrean"
+                            Style="{StaticResource GhostButton}"
+                            Margin="8,0,0,0"
+                            Command="{Binding AddToQueueCommand}" />
+                </Grid>
+
+                <!-- Aksi massal -->
+                <Grid Grid.Row="1" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <Button Content="Jeda semua" Style="{StaticResource GhostButton}"
+                                Command="{Binding PauseAllCommand}" Margin="0,0,8,0" />
+                        <Button Content="Lanjutkan semua" Style="{StaticResource GhostButton}"
+                                Command="{Binding ResumeAllCommand}" Margin="0,0,8,0" />
+                        <Button Content="Hapus yang selesai" Style="{StaticResource GhostButton}"
+                                Command="{Binding ClearCompletedCommand}" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="2" Text="{Binding StatusMessage}"
+                               Style="{StaticResource Caption}"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Right"
+                               MaxWidth="520"
+                               TextTrimming="None" />
+                </Grid>
+
+                <!-- Daftar unduhan -->
+                <Border Grid.Row="2"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="10">
+                    <Grid>
+                        <ListBox ItemsSource="{Binding Downloads.Items}"
+                                 SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                                 Style="{StaticResource DownloadList}"
+                                 MinHeight="160">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="16,12">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <!-- ===== Baris utama ===== -->
+                                        <Grid Grid.Row="0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="{Binding FileName}"
+                                                           FontSize="13" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Host}"
+                                                           Style="{StaticResource Caption}"
+                                                           Margin="0,2,0,0" />
+                                            </StackPanel>
+
+                                            <!-- Status + aksi -->
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                        VerticalAlignment="Center">
+                                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                                    <TextBlock Text="{Binding StateText}"
+                                                               FontSize="11" FontWeight="SemiBold"
+                                                               HorizontalAlignment="Right"
+                                                               Foreground="{Binding State, Converter={StaticResource StateBrushConverter}}" />
+                                                    <TextBlock Text="{Binding SegmentText}"
+                                                               Style="{StaticResource Caption}"
+                                                               HorizontalAlignment="Right" />
+                                                </StackPanel>
+
+                                                <Button Content="Jeda" Style="{StaticResource GhostButton}"
+                                                        Padding="10,5" FontSize="11" Margin="0,0,6,0"
+                                                        Command="{Binding DataContext.PauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        Visibility="{Binding CanPause, Converter={StaticResource BoolToVisibility}}" />
+                                                <Button Content="Lanjut" Style="{StaticResource GhostButton}"
+                                                        Padding="10,5" FontSize="11" Margin="0,0,6,0"
+                                                        Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        Visibility="{Binding CanResume, Converter={StaticResource BoolToVisibility}}" />
+                                                <Button Content="Batal" Style="{StaticResource GhostButton}"
+                                                        Padding="10,5" FontSize="11"
+                                                        Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- ===== Mode penuh: angka + rel progres ===== -->
+                                        <Grid Grid.Row="1" Margin="0,10,0,0"
+                                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibility}}">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <Grid Grid.Row="0" Margin="0,0,0,7">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Grid.Column="0" Text="{Binding SizeText}"
+                                                           Style="{StaticResource Numeric}"
+                                                           Margin="0,0,16,0" />
+                                                <TextBlock Grid.Column="1" Text="{Binding SpeedText}"
+                                                           Style="{StaticResource Numeric}"
+                                                           Foreground="{DynamicResource SuccessBrush}"
+                                                           Margin="0,0,16,0" />
+                                                <TextBlock Grid.Column="2" Text="{Binding EtaText}"
+                                                           Style="{StaticResource Numeric}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           Margin="0,0,16,0" />
+                                                <TextBlock Grid.Column="4" Text="{Binding PercentText}"
+                                                           Style="{StaticResource Numeric}"
+                                                           FontWeight="SemiBold" />
+                                            </Grid>
+
+                                            <ProgressBar Grid.Row="1"
+                                                         Style="{StaticResource ThinProgressBar}"
+                                                         Value="{Binding ProgressPercent, Mode=OneWay}"
+                                                         Maximum="100" />
+                                        </Grid>
+
+                                        <!-- ===== Mode ringkas: ukuran + aksi ringan ===== -->
+                                        <Grid Grid.Row="1" Margin="0,8,0,0"
+                                              Visibility="{Binding IsCompact, Converter={StaticResource BoolToVisibility}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Grid.Column="0" Text="{Binding TotalSizeText}"
+                                                       Style="{StaticResource Numeric}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                            <Button Grid.Column="1" Content="Buka lokasi"
+                                                    Style="{StaticResource GhostButton}"
+                                                    Padding="10,5" FontSize="11"
+                                                    Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Visibility="{Binding CanOpenFile, Converter={StaticResource BoolToVisibility}}" />
+                                        </Grid>
+
+                                        <!-- Galat: pesan apa adanya, tidak disembunyikan -->
+                                        <Border Grid.Row="1" Margin="0,10,0,0"
+                                                Background="{DynamicResource SurfaceAltBrush}"
+                                                CornerRadius="6" Padding="10,7"
+                                                Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}">
+                                            <TextBlock Text="{Binding Error}"
+                                                       Style="{StaticResource Caption}"
+                                                       Foreground="{DynamicResource DangerBrush}"
+                                                       TextWrapping="Wrap" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <!-- Keadaan kosong menggantikan daftar sepenuhnya (DESIGN.md bagian 11) -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Visibility="{Binding Downloads.IsEmpty, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Belum ada unduhan"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Tempel URL berkas di kotak atas, lalu tekan Enter."
+                                       Margin="0,6,0,0" HorizontalAlignment="Center"
+                                       Style="{StaticResource Caption}" />
+                            <Button Content="Ke kotak URL" Style="{StaticResource GhostButton}"
+                                    Margin="0,14,0,0" HorizontalAlignment="Center"
+                                    Command="{Binding FocusUrlCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </Grid>
-        </Border>
 
-        <!-- ===== Baris aksi massal ===== -->
-        <Border Grid.Row="2" Padding="20,4,20,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <!-- Kolom kanan: panel periksa -->
+            <Border Grid.Column="1"
+                    Width="304"
+                    Margin="0,16,20,12"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="10"
+                    Visibility="{Binding IsInspectorOpen, Converter={StaticResource BoolToVisibility}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Button Content="Jeda semua" Style="{StaticResource GhostButton}"
-                            Command="{Binding PauseAllCommand}" Margin="0,0,8,0" />
-                    <Button Content="Lanjutkan semua" Style="{StaticResource GhostButton}"
-                            Command="{Binding ResumeAllCommand}" Margin="0,0,8,0" />
-                    <Button Content="Hapus yang selesai" Style="{StaticResource GhostButton}"
-                            Command="{Binding ClearCompletedCommand}" />
-                </StackPanel>
+                    <!-- Judul panel -->
+                    <Grid Grid.Row="0" Margin="16,14,12,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="2" Text="{Binding StatusMessage}"
-                           Style="{StaticResource Caption}"
-                           VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           MaxWidth="480" />
-            </Grid>
-        </Border>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Periksa unduhan" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding SelectedItem.FileName}"
+                                       FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
 
-        <!-- ===== Daftar unduhan ===== -->
-        <Border Grid.Row="3" Margin="20,0,20,12"
+                        <Button Grid.Column="1" Style="{StaticResource IconButton}"
+                                Width="28" Height="28"
+                                Command="{Binding CloseInspectorCommand}"
+                                ToolTip="Tutup panel"
+                                AutomationProperties.Name="Tutup panel">
+                            <Path Width="10" Height="10" Stroke="{DynamicResource TextPrimaryBrush}"
+                                  StrokeThickness="1.6"
+                                  Data="M 1,1 L 9,9 M 9,1 L 1,9" />
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,0,12,0">
+                        <StackPanel>
+                            <!-- Peta segmen: bagian mana yang tertinggal -->
+                            <TextBlock Text="Bagian unduhan" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding SelectedItem.SegmentText}"
+                                       Style="{StaticResource Caption}" Margin="0,2,0,8" />
+                            <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="10">
+                                <StackPanel>
+                                    <themes:SegmentMap Height="26"
+                                                       SegmentsSource="{Binding SelectedItem.Segments}"
+                                                       AutomationProperties.Name="Peta bagian unduhan" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Border Width="8" Height="8" CornerRadius="2"
+                                                Background="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Selesai" Style="{StaticResource Caption}" Margin="6,0,14,0" />
+                                        <Border Width="8" Height="8" CornerRadius="2"
+                                                Background="{DynamicResource WarningBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Berjalan" Style="{StaticResource Caption}" Margin="6,0,0,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Kecepatan unduhan ini -->
+                            <TextBlock Text="Kecepatan 30 detik" Style="{StaticResource SectionLabel}" Margin="0,16,0,6" />
+                            <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="8" Height="64">
+                                <themes:SpeedGraph ValuesSource="{Binding SelectedItem.SpeedHistory}" />
+                            </Border>
+
+                            <!-- Ringkasan kunci-nilai -->
+                            <TextBlock Text="Rincian" Style="{StaticResource SectionLabel}" Margin="0,16,0,6" />
+                            <StackPanel>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Ukuran" Style="{StaticResource Caption}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedItem.TotalSizeText}"
+                                               Style="{StaticResource Numeric}" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Koneksi" Style="{StaticResource Caption}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedItem.ConnectionText}"
+                                               Style="{StaticResource Numeric}" />
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Dukungan Range" Style="{StaticResource Caption}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedItem.RangeSupportText}"
+                                               Style="{StaticResource Caption}" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Validator" Style="{StaticResource Caption}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedItem.ValidatorText}"
+                                               Style="{StaticResource Caption}" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Folder" Style="{StaticResource Caption}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedItem.TargetFolder}"
+                                               Style="{StaticResource Caption}" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="URL" Style="{StaticResource Caption}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedItem.Url}"
+                                               Style="{StaticResource Caption}" TextWrapping="Wrap" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Aksi panel -->
+                    <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                            Padding="16,12">
+                        <StackPanel>
+                            <Button Content="Salin URL" Style="{StaticResource GhostButton}"
+                                    HorizontalAlignment="Stretch" Margin="0,0,0,6"
+                                    Command="{Binding CopyUrlCommand}" />
+                            <Button Content="Buka lokasi" Style="{StaticResource GhostButton}"
+                                    HorizontalAlignment="Stretch"
+                                    Command="{Binding OpenFileCommand}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ===================== Status bar ===================== -->
+        <Border Grid.Row="2"
                 Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1" CornerRadius="8">
-            <Grid>
-                <DataGrid x:Name="DownloadGrid"
-                          ItemsSource="{Binding Downloads.Items}"
-                          SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-                          Style="{StaticResource DownloadGrid}"
-                          ColumnHeaderStyle="{StaticResource GridHeader}"
-                          RowStyle="{StaticResource GridRow}"
-                          CellStyle="{StaticResource GridCell}"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                          VirtualizingPanel.IsVirtualizing="True"
-                          VirtualizingPanel.VirtualizationMode="Recycling">
-
-                    <DataGrid.Columns>
-                        <!-- Nama berkas + progress -->
-                        <DataGridTemplateColumn Header="Berkas" Width="*" MinWidth="280">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center" Margin="0,6">
-                                        <TextBlock Text="{Binding FileName}"
-                                                   FontSize="13" FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                                        <TextBlock Text="{Binding Url}"
-                                                   Style="{StaticResource Caption}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Margin="0,2,0,6" />
-                                        <ProgressBar Style="{StaticResource ThinProgressBar}"
-                                                     Value="{Binding Fraction, Mode=OneWay, Converter={StaticResource PctConverter}}"
-                                                     Maximum="100" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <!-- Status -->
-                        <DataGridTemplateColumn Header="Status" Width="120">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding StateText}"
-                                                   FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{Binding State, Converter={StaticResource StateBrushConverter}}" />
-                                        <TextBlock Text="{Binding SegmentText}"
-                                                   Style="{StaticResource Caption}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <!-- Ukuran -->
-                        <DataGridTemplateColumn Header="Ukuran" Width="150">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding SizeText}" Style="{StaticResource Body}" />
-                                        <TextBlock Text="{Binding PercentText}" Style="{StaticResource Caption}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <!-- Kecepatan -->
-                        <DataGridTemplateColumn Header="Kecepatan" Width="110">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding SpeedText}" Style="{StaticResource Body}"
-                                                   Foreground="{DynamicResource SuccessBrush}" />
-                                        <TextBlock Text="{Binding EtaText}" Style="{StaticResource Caption}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <!-- Aksi baris -->
-                        <DataGridTemplateColumn Header="" Width="150">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button Content="Jeda" Style="{StaticResource GhostButton}"
-                                                Padding="0" Width="46" Height="26" FontSize="11"
-                                                Margin="0,0,6,0"
-                                                Command="{Binding DataContext.PauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                Visibility="{Binding CanPause, Converter={StaticResource BoolToVisibility}}" />
-                                        <Button Content="Lanjut" Style="{StaticResource GhostButton}"
-                                                Padding="0" Width="52" Height="26" FontSize="11"
-                                                Margin="0,0,6,0"
-                                                Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                Visibility="{Binding CanResume, Converter={StaticResource BoolToVisibility}}" />
-                                        <Button Content="Batal" Style="{StaticResource GhostButton}"
-                                                Padding="0" Width="46" Height="26" FontSize="11"
-                                                Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
-
-                <!-- Empty state -->
-                <StackPanel x:Name="EmptyState"
-                            VerticalAlignment="Center" HorizontalAlignment="Center"
-                            Visibility="{Binding Downloads.Items.Count, Converter={StaticResource ZeroToVisible}}">
-                    <TextBlock Text="Belum ada unduhan"
-                               FontSize="15" FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBlock Text="Tempel URL di kotak atas, lalu tekan Enter."
-                               Margin="0,6,0,0"
-                               HorizontalAlignment="Center"
-                               Style="{StaticResource Caption}" />
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- ===== Status bar ===== -->
-        <Border Grid.Row="4" Background="{DynamicResource SurfaceBrush}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                BorderThickness="0,1,0,0"
                 Padding="20,8">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -260,17 +463,18 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Style="{StaticResource Caption}"
-                           VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis">
-                    <Run Text="Folder:" />
-                    <Run Text="{Binding DownloadDir, Mode=OneWay}" />
-                </TextBlock>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Folder" Style="{StaticResource Caption}" Margin="0,0,6,0" />
+                    <TextBlock Text="{Binding DownloadDir}"
+                               Style="{StaticResource Caption}"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource Caption}" Margin="0,0,14,0"
-                               VerticalAlignment="Center"
-                               Text="{Binding Downloads.SummaryText}" />
+                    <Button Content="Buka folder" Style="{StaticResource GhostButton}"
+                            FontSize="11" Padding="10,5" Margin="0,0,8,0"
+                            Command="{Binding OpenFolderCommand}" />
                     <Button Content="Pengaturan" Style="{StaticResource GhostButton}"
                             FontSize="11" Padding="10,5"
                             Click="OpenSettings_Click" />
@@ -279,3 +483,6 @@
         </Border>
     </Grid>
 </Window>
+
+
+

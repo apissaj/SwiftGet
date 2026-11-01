@@ -1,12 +1,13 @@
 ﻿using System.Windows;
-using System.Windows.Forms;
+using System.Windows.Controls;
+using System.Windows.Input;
 using SwiftGet.App.Infrastructure;
 using SwiftGet.App.ViewModels;
 
 namespace SwiftGet.App;
 
 /// <summary>
-/// Jendela utama: daftar unduhan, input URL, tray icon, dan pemantau clipboard.
+/// Jendela utama: daftar unduhan, panel periksa, tray, dan pemantau clipboard.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -26,12 +27,44 @@ public partial class MainWindow : Window
         DataContext = viewModel;
 
         _viewModel.DownloadCompleted += OnDownloadCompleted;
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _viewModel.FocusUrlRequested += (_, _) =>
+        {
+            UrlField.Focus();
+            Keyboard.Focus(UrlField);
+        };
 
         _clipboard = new ClipboardWatcher(this) { Enabled = settings.WatchClipboard };
         _clipboard.UrlDetected += OnClipboardUrl;
 
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
+        PreviewKeyDown += OnPreviewKeyDown;
+
+        // Fokus awal: kotak URL adalah focal point layar ini.
+        Loaded += (_, _) => UrlField.Focus();
+    }
+
+    /// <summary>
+    /// Palet dibaca ulang setiap kali tema berganti. Ini satu-satunya tempat
+    /// <see cref="ThemeManager"/> dipanggil saat runtime, supaya tidak ada
+    /// sumber kebenaran kedua.
+    /// </summary>
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.IsDark))
+        {
+            ThemeManager.Apply(_viewModel.IsDark);
+        }
+    }
+
+    private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && _viewModel.IsInspectorOpen)
+        {
+            _viewModel.CloseInspectorCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -77,8 +110,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Ikon tray dibuat dari geometri sederhana, bukan berkas .ico, agar aplikasi
-    /// tetap satu exe tanpa aset eksternal.
+    /// Ikon tray dibuat dari geometri, bukan berkas .ico, supaya aplikasi
+    /// tetap satu berkas tanpa aset eksternal.
     /// </summary>
     private static System.Drawing.Icon CreateTrayIcon()
     {
@@ -88,19 +121,18 @@ public partial class MainWindow : Window
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.Clear(System.Drawing.Color.Transparent);
 
-            using var background = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0x2D, 0x6C, 0xDF));
+            using var background = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0x0F, 0x6B, 0x5C));
             g.FillEllipse(background, 0, 0, 31, 31);
 
-            using var arrowPen = new System.Drawing.Pen(System.Drawing.Color.White, 3.2f)
+            using var pen = new System.Drawing.Pen(System.Drawing.Color.White, 3f)
             {
                 StartCap = System.Drawing.Drawing2D.LineCap.Round,
                 EndCap = System.Drawing.Drawing2D.LineCap.Round,
             };
-            // Panah ke bawah + dasar, simbol unduhan.
-            g.DrawLine(arrowPen, 16, 8, 16, 20);
-            g.DrawLine(arrowPen, 10, 15, 16, 21);
-            g.DrawLine(arrowPen, 22, 15, 16, 21);
-            g.DrawLine(arrowPen, 9, 25, 23, 25);
+            g.DrawLine(pen, 16, 8, 16, 20);
+            g.DrawLine(pen, 10, 15, 16, 21);
+            g.DrawLine(pen, 22, 15, 16, 21);
+            g.DrawLine(pen, 9, 25, 23, 25);
         }
 
         IntPtr handle = bitmap.GetHicon();
@@ -136,7 +168,7 @@ public partial class MainWindow : Window
     {
         if (_tray is null || _balloonShown) return;
 
-        // Batasi notifikasi agar tidak mengganggu saat banyak unduhan selesai.
+        // Batasi notifikasi agar tidak mengganggu saat banyak unduhan selesai bersamaan.
         _balloonShown = true;
         try
         {
@@ -144,10 +176,13 @@ public partial class MainWindow : Window
             _tray.BalloonTipText = item.FileName;
             _tray.ShowBalloonTip(3000);
         }
-        catch (Exception) { /* notifikasi gagal bukan masalah */ }
+        catch (Exception)
+        {
+            // Notifikasi gagal bukan masalah fungsional.
+        }
 
-        _ = System.Threading.Tasks.Task.Delay(5000).ContinueWith(_ => _balloonShown = false,
-            System.Threading.Tasks.TaskScheduler.Default);
+        _ = System.Threading.Tasks.Task.Delay(5000)
+            .ContinueWith(_ => _balloonShown = false, System.Threading.Tasks.TaskScheduler.Default);
     }
 
     public void ShowFromTray()
@@ -170,7 +205,7 @@ public partial class MainWindow : Window
 
         if (_settings.MinimizeToTray && _tray is not null)
         {
-            // Sembunyikan ke tray, jangan matikan unduhan yang sedang berjalan.
+            // Sembunyikan ke tray; unduhan yang berjalan tetap lanjut.
             e.Cancel = true;
             Hide();
             return;
@@ -187,7 +222,10 @@ public partial class MainWindow : Window
             _tray.Visible = false;
             _tray.Dispose();
         }
-        catch (Exception) { /* abaikan */ }
+        catch (Exception)
+        {
+            // Tray mungkin sudah dibuang.
+        }
         _tray = null;
     }
 
@@ -206,7 +244,8 @@ public partial class MainWindow : Window
 
         _settings.Save();
         _clipboard.Enabled = _settings.WatchClipboard;
-        _viewModel.SetStatus(
-            "Pengaturan disimpan. Jumlah koneksi baru berlaku untuk unduhan berikutnya.");
+        _viewModel.SetStatus("Pengaturan disimpan, berlaku untuk unduhan berikutnya");
     }
 }
+
+

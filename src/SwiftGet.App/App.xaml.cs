@@ -5,12 +5,13 @@ using SwiftGet.App.ViewModels;
 namespace SwiftGet.App;
 
 /// <summary>
-/// Titik masuk aplikasi. Menjaga satu instance, memuat pengaturan, lalu
-/// menampilkan jendela utama.
+/// Titik masuk aplikasi. Menjaga satu instance, memuat pengaturan dan tema,
+/// lalu menampilkan jendela utama.
 /// </summary>
 public partial class App : Application
 {
     private const string SingleInstanceMutexName = @"Local\SwiftGet.SingleInstance.v1";
+    private const string ShowSignalName = @"Local\SwiftGet.ShowSignal.v1";
 
     private Mutex? _instanceMutex;
     private MainViewModel? _viewModel;
@@ -25,17 +26,7 @@ public partial class App : Application
 
         if (!isFirstInstance)
         {
-            // Instance lain sudah berjalan: minta jendelanya muncul lalu keluar.
-            try
-            {
-                if (EventWaitHandle.TryOpenExisting(@"Local\SwiftGet.ShowSignal.v1", out EventWaitHandle? signal))
-                {
-                    signal.Set();
-                    signal.Dispose();
-                }
-            }
-            catch (Exception) { /* gagal memberi sinyal bukan alasan untuk crash */ }
-
+            SignalExistingInstance();
             Shutdown();
             return;
         }
@@ -48,12 +39,13 @@ public partial class App : Application
             args.Handled = true;
         };
 
-        var settings = AppSettings.Load();
+        Motion.Initialize();
 
-        ThemeManager.Apply(dark: false);
-        ApplyAccent();
+        AppSettings settings = AppSettings.Load();
+        bool dark = settings.DarkTheme ?? IsSystemDark();
+        ThemeManager.Apply(dark);
 
-        _viewModel = new MainViewModel(settings, Dispatcher);
+        _viewModel = new MainViewModel(settings, Dispatcher) { IsDark = dark };
 
         var window = new MainWindow(_viewModel, settings);
         MainWindow = window;
@@ -64,10 +56,46 @@ public partial class App : Application
         _ = _viewModel.InitializeAsync();
     }
 
-    /// <summary>Dengarkan permintaan dari instance kedua untuk menampilkan jendela.</summary>
+    private static void SignalExistingInstance()
+    {
+        try
+        {
+            if (EventWaitHandle.TryOpenExisting(ShowSignalName, out EventWaitHandle? signal))
+            {
+                signal.Set();
+                signal.Dispose();
+            }
+        }
+        catch (Exception)
+        {
+            // Memberi sinyal gagal bukan alasan untuk crash.
+        }
+    }
+
+    /// <summary>
+    /// Baca preferensi tema Windows saat belum ada pilihan tersimpan.
+    /// Aplikasi bertema gelap secara eksplisit hanya karena alasan kuat
+    /// (R-21); SwiftGet mengikuti sistem, pengguna tetap bisa menggantinya.
+    /// </summary>
+    private static bool IsSystemDark()
+    {
+        try
+        {
+            object? value = Microsoft.Win32.Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "AppsUseLightTheme", null);
+
+            return value is int light && light == 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private void StartShowSignalListener()
     {
-        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\SwiftGet.ShowSignal.v1");
+        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
 
         _signalThread = new Thread(() =>
         {
@@ -84,10 +112,7 @@ public partial class App : Application
 
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    if (MainWindow is MainWindow w)
-                    {
-                        w.ShowFromTray();
-                    }
+                    if (MainWindow is MainWindow window) window.ShowFromTray();
                 }));
             }
         })
@@ -99,12 +124,6 @@ public partial class App : Application
         _signalThread.Start();
     }
 
-    private static void ApplyAccent()
-    {
-        // Aksen default dari tema; dibiarkan di satu tempat agar mudah diganti.
-        ThemeManager.Apply(dark: false);
-    }
-
     protected override void OnExit(ExitEventArgs e)
     {
         try
@@ -112,13 +131,15 @@ public partial class App : Application
             _viewModel?.Dispose();
             _showSignal?.Dispose();
         }
-        catch (Exception) { /* keluar secepat mungkin */ }
+        catch (Exception)
+        {
+            // Keluar secepat mungkin.
+        }
 
-        try { _instanceMutex?.ReleaseMutex(); } catch { /* mungkin sudah dilepas */ }
+        try { _instanceMutex?.ReleaseMutex(); } catch (ApplicationException) { }
         _instanceMutex?.Dispose();
 
         base.OnExit(e);
     }
 }
-
 

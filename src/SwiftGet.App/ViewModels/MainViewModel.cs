@@ -1,6 +1,4 @@
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Windows;
+﻿using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using SwiftGet.App.Infrastructure;
 using SwiftGet.Core;
@@ -10,7 +8,7 @@ using SwiftGet.Core.Scheduling;
 namespace SwiftGet.App.ViewModels;
 
 /// <summary>
-/// View model jendela utama: daftar unduhan, perintah, dan status aplikasi.
+/// View model jendela utama: daftar unduhan, panel periksa, dan status aplikasi.
 /// </summary>
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
@@ -19,10 +17,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly CancellationTokenSource _cts = new();
 
     private string _newUrl = "";
-    private string _statusMessage = "Siap.";
+    private string _statusMessage = "Siap";
     private bool _isBusy;
     private bool _isDark;
     private DownloadItemViewModel? _selectedItem;
+    private bool _isInspectorOpen;
     private bool _disposed;
 
     public MainViewModel(AppSettings settings, Dispatcher dispatcher)
@@ -40,17 +39,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Manager = new DownloadManager(AppSettings.StateDirectory, options);
         Downloads = new DownloadsViewModel(Manager, dispatcher);
 
-        AddCommand = new AsyncRelayCommand(AddAndStartAsync, () => !IsBusy && !string.IsNullOrWhiteSpace(NewUrl));
-        AddWithoutStartCommand = new AsyncRelayCommand(AddOnlyAsync, () => !IsBusy && !string.IsNullOrWhiteSpace(NewUrl));
+        AddCommand = new AsyncRelayCommand(AddAndStartAsync, () => !IsBusy && HasValidUrl);
+        AddToQueueCommand = new RelayCommand(_ => AddOnly(), new Func<object?, bool>(_ => HasValidUrl));
         PauseCommand = new RelayCommand(_ => PauseSelected(), _ => SelectedItem?.CanPause == true);
         ResumeCommand = new AsyncRelayCommand(_ => ResumeSelectedAsync(), _ => SelectedItem?.CanResume == true);
         CancelCommand = new RelayCommand(_ => CancelSelected(), _ => SelectedItem?.CanCancel == true);
-        OpenFolderCommand = new RelayCommand(_ => OpenDownloadFolder(), _ => Directory.Exists(DownloadDir));
-        PauseAllCommand = new RelayCommand(_ => PauseAll(), _ => Downloads.Items.Any(i => i.CanPause));
+        OpenFolderCommand = new RelayCommand(_ => OpenDownloadFolder(), new Func<object?, bool>(_ => Directory.Exists(DownloadDir)));
+        OpenFileCommand = new RelayCommand(_ => OpenSelectedLocation(), _ => SelectedItem is not null);
+        PauseAllCommand = new RelayCommand(_ => PauseAll(), new Func<object?, bool>(_ => Downloads.Items.Any(i => i.CanPause)));
         ResumeAllCommand = new AsyncRelayCommand(ResumeAllAsync, () => Downloads.Items.Any(i => i.CanResume));
-        ToggleThemeCommand = new RelayCommand(_ => ToggleTheme());
-        ClearCompletedCommand = new RelayCommand(_ => ClearCompleted(), _ => Downloads.Items.Any(i => i.State == DownloadState.Completed));
+        ClearCompletedCommand = new RelayCommand(_ => ClearCompleted(), new Func<object?, bool>(_ => Downloads.Items.Any(i => i.State == DownloadState.Completed)));
         CopyUrlCommand = new RelayCommand(_ => CopySelectedUrl(), _ => SelectedItem is not null);
+        CloseInspectorCommand = new RelayCommand(_ => IsInspectorOpen = false);
+        ToggleThemeCommand = new RelayCommand(_ => ToggleTheme());
+        FocusUrlCommand = new RelayCommand(_ => FocusUrlRequested?.Invoke(this, EventArgs.Empty));
 
         Downloads.Items.CollectionChanged += (_, _) => RefreshCommandStates();
     }
@@ -59,9 +61,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public DownloadsViewModel Downloads { get; }
 
-    public ObservableCollection<string> Log { get; } = new();
-
     public string DownloadDir => _settings.DownloadDirectory;
+
+    /// <summary>Diminta UI untuk memindahkan fokus ke kotak URL.</summary>
+    public event EventHandler? FocusUrlRequested;
+
+    /// <summary>Diminta UI saat unduhan selesai (untuk notifikasi tray).</summary>
+    public event Action<DownloadItemViewModel>? DownloadCompleted;
 
     public string NewUrl
     {
@@ -69,9 +75,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set
         {
             if (!SetProperty(ref _newUrl, value)) return;
+            OnPropertyChanged(nameof(HasValidUrl));
             RefreshCommandStates();
         }
     }
+
+    /// <summary>True bila isi kotak URL bisa dipakai. Dipakai juga untuk keadaan tombol.</summary>
+    public bool HasValidUrl =>
+        !string.IsNullOrWhiteSpace(_newUrl) &&
+        Uri.TryCreate(_newUrl.Trim(), UriKind.Absolute, out Uri? uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     public string StatusMessage
     {
@@ -92,39 +105,53 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool IsDark
     {
         get => _isDark;
-        private set
+        set
         {
             if (!SetProperty(ref _isDark, value)) return;
             OnPropertyChanged(nameof(ThemeLabel));
         }
     }
 
-    public string ThemeLabel => IsDark ? "Terang" : "Gelap";
+    public string ThemeLabel => IsDark ? "Tema terang" : "Tema gelap";
 
     public DownloadItemViewModel? SelectedItem
     {
         get => _selectedItem;
         set
         {
+            if (_selectedItem is not null) _selectedItem.IsSelected = false;
             if (!SetProperty(ref _selectedItem, value)) return;
+
+            if (value is not null)
+            {
+                value.IsSelected = true;
+                IsInspectorOpen = true;
+            }
+
             RefreshCommandStates();
         }
     }
 
+    public bool IsInspectorOpen
+    {
+        get => _isInspectorOpen;
+        private set => SetProperty(ref _isInspectorOpen, value);
+    }
+
     public AsyncRelayCommand AddCommand { get; }
-    public AsyncRelayCommand AddWithoutStartCommand { get; }
+    public RelayCommand AddToQueueCommand { get; }
     public RelayCommand PauseCommand { get; }
     public AsyncRelayCommand ResumeCommand { get; }
     public RelayCommand CancelCommand { get; }
     public RelayCommand OpenFolderCommand { get; }
+    public RelayCommand OpenFileCommand { get; }
     public RelayCommand PauseAllCommand { get; }
     public AsyncRelayCommand ResumeAllCommand { get; }
-    public RelayCommand ToggleThemeCommand { get; }
     public RelayCommand ClearCompletedCommand { get; }
     public RelayCommand CopyUrlCommand { get; }
-
-    /// <summary>Diminta UI saat unduhan selesai (untuk notifikasi tray).</summary>
-    public event Action<DownloadItemViewModel>? DownloadCompleted;
+    public RelayCommand CloseInspectorCommand { get; }
+    public RelayCommand ToggleThemeCommand { get; }
+    public RelayCommand FocusUrlCommand { get; }
 
     public async System.Threading.Tasks.Task InitializeAsync()
     {
@@ -137,14 +164,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             if (Manager.Tasks.Count > 0)
             {
-                StatusMessage = $"{Manager.Tasks.Count} unduhan dipulihkan.";
-            }
-            else
-            {
-                StatusMessage = "Siap. Tempel URL untuk memulai.";
+                StatusMessage = $"{Manager.Tasks.Count} unduhan dipulihkan, semua dalam keadaan dijeda";
             }
         }
-        catch (OperationCanceledException) { /* keluar */ }
+        catch (OperationCanceledException)
+        {
+            // Aplikasi ditutup saat memulihkan.
+        }
         catch (Exception ex)
         {
             StatusMessage = "Gagal memulihkan sesi: " + ex.Message;
@@ -158,15 +184,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         await StartTaskAsync(task).ConfigureAwait(true);
     }
 
-    private async System.Threading.Tasks.Task AddOnlyAsync()
+    private void AddOnly()
     {
-        if (TryAdd() is not null)
-            await System.Threading.Tasks.Task.CompletedTask.ConfigureAwait(true);
+        DownloadTask? task = TryAdd();
+        if (task is null) return;
+
+        StatusMessage = $"{task.FileName} masuk antrean";
     }
 
     private DownloadTask? TryAdd()
     {
-        string url = (NewUrl ?? "").Trim();
+        string url = (_newUrl ?? "").Trim();
         if (string.IsNullOrWhiteSpace(url)) return null;
 
         try
@@ -174,7 +202,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Directory.CreateDirectory(_settings.DownloadDirectory);
 
             DownloadTask task = Manager.Add(url, _settings.DownloadDirectory);
-            Downloads.Add(task);
+            DownloadItemViewModel item = Downloads.Add(task);
+            SelectedItem = item;
             NewUrl = "";
             StatusMessage = $"Ditambahkan: {task.FileName}";
             RefreshCommandStates();
@@ -190,26 +219,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private async System.Threading.Tasks.Task StartTaskAsync(DownloadTask task)
     {
         IsBusy = true;
-        StatusMessage = $"Memeriksa {task.FileName}...";
+        StatusMessage = $"Memeriksa {task.FileName}";
         try
         {
             await Manager.StartAsync(task.Id, _cts.Token).ConfigureAwait(true);
 
             DownloadItemViewModel? item = Downloads.Items.FirstOrDefault(i => i.Id == task.Id);
-            if (item is not null) item.RefreshFromTask();
+            item?.RefreshFromTask();
 
-            if (task.State == DownloadState.Completed)
+            StatusMessage = task.State switch
             {
-                StatusMessage = $"Selesai: {task.FileName}";
-                if (item is not null) DownloadCompleted?.Invoke(item);
-            }
-            else if (task.State == DownloadState.Failed)
+                DownloadState.Completed => $"{task.FileName} selesai",
+                DownloadState.Failed => $"Gagal: {task.LastError}",
+                DownloadState.Paused => $"{task.FileName} dijeda, progres tersimpan",
+                _ => "Siap",
+            };
+
+            if (task.State == DownloadState.Completed && item is not null)
             {
-                StatusMessage = $"Gagal: {task.LastError}";
-            }
-            else if (task.State == DownloadState.Paused)
-            {
-                StatusMessage = $"Dijeda: {task.FileName}";
+                DownloadCompleted?.Invoke(item);
             }
         }
         finally
@@ -230,7 +258,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedItem is null) return;
         Manager.Pause(SelectedItem.Id);
-        StatusMessage = $"Dijeda: {SelectedItem.FileName}";
+        StatusMessage = $"{SelectedItem.FileName} dijeda, progres tersimpan";
         RefreshCommandStates();
     }
 
@@ -244,9 +272,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedItem is null) return;
         string id = SelectedItem.Id;
+        string name = SelectedItem.FileName;
         Manager.Cancel(id);
         Downloads.Remove(id);
-        StatusMessage = "Unduhan dibatalkan.";
+        SelectedItem = null;
+        IsInspectorOpen = false;
+        StatusMessage = $"{name} dibatalkan dan berkas sementara dihapus";
         RefreshCommandStates();
     }
 
@@ -255,29 +286,35 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (DownloadItemViewModel item in Downloads.Items.Where(i => i.CanPause))
             Manager.Pause(item.Id);
 
-        StatusMessage = "Semua unduhan aktif dijeda.";
+        StatusMessage = "Semua unduhan aktif dijeda";
         RefreshCommandStates();
     }
 
     private async System.Threading.Tasks.Task ResumeAllAsync()
     {
-        var pending = Downloads.Items.Where(i => i.CanResume).ToList();
+        List<DownloadItemViewModel> pending = Downloads.Items.Where(i => i.CanResume).ToList();
         foreach (DownloadItemViewModel item in pending)
         {
-            while (IsBusy) await System.Threading.Tasks.Task.Delay(200).ConfigureAwait(true);
+            while (IsBusy) await System.Threading.Tasks.Task.Delay(150).ConfigureAwait(true);
             await StartByIdAsync(item.Id).ConfigureAwait(true);
         }
 
-        StatusMessage = $"Melanjutkan {pending.Count} unduhan.";
+        StatusMessage = $"{pending.Count} unduhan dilanjutkan";
     }
 
     private void ClearCompleted()
     {
-        var done = Downloads.Items.Where(i => i.State == DownloadState.Completed).ToList();
+        List<DownloadItemViewModel> done = Downloads.Items.Where(i => i.State == DownloadState.Completed).ToList();
         foreach (DownloadItemViewModel item in done)
             Downloads.Remove(item.Id);
 
-        StatusMessage = $"{done.Count} entri selesai dibersihkan dari daftar.";
+        if (SelectedItem is not null && done.Contains(SelectedItem))
+        {
+            SelectedItem = null;
+            IsInspectorOpen = false;
+        }
+
+        StatusMessage = $"{done.Count} entri selesai dihapus dari daftar";
         RefreshCommandStates();
     }
 
@@ -287,43 +324,59 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             Clipboard.SetText(SelectedItem.Url);
-            StatusMessage = "URL disalin ke clipboard.";
+            StatusMessage = "URL disalin ke clipboard";
         }
         catch (Exception)
         {
-            StatusMessage = "Clipboard sedang tidak bisa diakses.";
+            StatusMessage = "Clipboard sedang dipakai aplikasi lain";
         }
     }
 
-    private void OpenDownloadFolder()
+    private void OpenSelectedLocation()
+    {
+        if (SelectedItem is null) return;
+
+        string target = SelectedItem.State == DownloadState.Completed && File.Exists(SelectedItem.Task.FinalPath)
+            ? SelectedItem.Task.FinalPath
+            : _settings.DownloadDirectory;
+
+        OpenInShell(target);
+    }
+
+    private void OpenDownloadFolder() => OpenInShell(_settings.DownloadDirectory);
+
+    private void OpenInShell(string path)
     {
         try
         {
-            Directory.CreateDirectory(_settings.DownloadDirectory);
+            if (path == _settings.DownloadDirectory) Directory.CreateDirectory(path);
+
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = _settings.DownloadDirectory,
+                FileName = path,
                 UseShellExecute = true,
             });
         }
         catch (Exception ex)
         {
-            StatusMessage = "Tidak bisa membuka folder: " + ex.Message;
+            StatusMessage = "Tidak bisa membuka lokasi: " + ex.Message;
         }
     }
 
     private void ToggleTheme()
     {
+        // ThemeManager dipanggil oleh pemilik tampilan (MainWindow), bukan dari sini:
+        // satu sumber kebenaran untuk membaca palet.
         IsDark = !IsDark;
-        ThemeManager.Apply(IsDark);
-        OnPropertyChanged(nameof(ThemeLabel));
+        _settings.DarkTheme = IsDark;
+        _settings.Save();
     }
 
-    /// <summary>Dipanggil dari clipboard watcher saat URL baru terdeteksi.</summary>
+    /// <summary>Dipanggil dari pemantau clipboard saat URL baru terdeteksi.</summary>
     public void OnClipboardUrl(string url)
     {
         NewUrl = url;
-        StatusMessage = "URL terdeteksi di clipboard.";
+        StatusMessage = "URL terdeteksi di clipboard";
     }
 
     public void SetStatus(string message) => StatusMessage = message;
@@ -331,11 +384,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void RefreshCommandStates()
     {
         AddCommand.RaiseCanExecuteChanged();
-        AddWithoutStartCommand.RaiseCanExecuteChanged();
+        AddToQueueCommand.RaiseCanExecuteChanged();
         PauseCommand.RaiseCanExecuteChanged();
         ResumeCommand.RaiseCanExecuteChanged();
         CancelCommand.RaiseCanExecuteChanged();
         OpenFolderCommand.RaiseCanExecuteChanged();
+        OpenFileCommand.RaiseCanExecuteChanged();
         PauseAllCommand.RaiseCanExecuteChanged();
         ResumeAllCommand.RaiseCanExecuteChanged();
         ClearCompletedCommand.RaiseCanExecuteChanged();
@@ -347,9 +401,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        Downloads.StopSampling();
         _cts.Cancel();
         Downloads.Dispose();
         _ = Manager.DisposeAsync();
         _cts.Dispose();
     }
 }
+
+
+
+

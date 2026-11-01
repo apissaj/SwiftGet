@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
@@ -61,6 +61,8 @@ public sealed class StateToBrushConverter : IValueConverter
                 DownloadState.Downloading => "AccentBrush",
                 DownloadState.Probing => "WarningBrush",
                 DownloadState.Paused => "WarningBrush",
+                DownloadState.Queued => "TextSecondaryBrush",
+                DownloadState.Canceled => "TextSecondaryBrush",
                 _ => "TextSecondaryBrush",
             }
             : "TextSecondaryBrush";
@@ -73,3 +75,4 @@ public sealed class StateToBrushConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
