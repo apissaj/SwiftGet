@@ -25,8 +25,10 @@ public static class ThemeManager
             Set(resources, "BorderBrush", "#3A3A42");
             Set(resources, "TextPrimaryBrush", "#F0F0F4");
             Set(resources, "TextSecondaryBrush", "#A0A0AC");
-            Set(resources, "AccentBrush", "#4C8DFF");
-            Set(resources, "AccentHoverBrush", "#6AA0FF");
+            // Aksen mode gelap digelapkan dari #4C8DFF: putih di atasnya hanya
+            // 3,20:1 (gagal AA). #366FE0 mencapai 4,66:1 untuk teks tombol.
+            Set(resources, "AccentBrush", "#366FE0");
+            Set(resources, "AccentHoverBrush", "#2F63CC");
             Set(resources, "SuccessBrush", "#3DD68C");
             Set(resources, "DangerBrush", "#FF6B6B");
             Set(resources, "WarningBrush", "#FFB84D");
@@ -41,10 +43,12 @@ public static class ThemeManager
             Set(resources, "TextPrimaryBrush", "#1A1A20");
             Set(resources, "TextSecondaryBrush", "#6B6B76");
             Set(resources, "AccentBrush", "#2D6CDF");
-            Set(resources, "AccentHoverBrush", "#4A85F0");
-            Set(resources, "SuccessBrush", "#1FA463");
-            Set(resources, "DangerBrush", "#D93B3B");
-            Set(resources, "WarningBrush", "#C88000");
+            Set(resources, "AccentHoverBrush", "#245BB8");
+            // Hijau/kuning jenuh gagal AA untuk teks kecil di atas putih
+            // (3,21:1). Versi gelap ini lolos di surface maupun app background.
+            Set(resources, "SuccessBrush", "#0F7A46");
+            Set(resources, "DangerBrush", "#C42B2B");
+            Set(resources, "WarningBrush", "#8A5B00");
             Set(resources, "TrackBrush", "#E6E8EC");
         }
     }
@@ -57,4 +61,5 @@ public static class ThemeManager
         resources[key] = brush;
     }
 }
+
 

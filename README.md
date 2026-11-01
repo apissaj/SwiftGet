@@ -159,6 +159,21 @@ dotnet test
 
 ---
 
+## Aturan agen & arah desain
+
+Proyek ini memakai [antislop](https://antislop.ai.id/), sistem aturan untuk agen
+AI yang menyaring UI, teks, dan komentar hasil generik. Berkas aturan ada di
+`.antislop/` (inti + skill UI, aksesibilitas, copywriting, dan higiene kode).
+
+Arah desain tinggal di `DESIGN.md`. Aturan antislop menghapus yang generik;
+`DESIGN.md` yang menentukan mau dibawa ke mana.
+
+Memperbarui berkas aturan:
+
+```powershell
+.\scripts\update-antislop.ps1
+```
+
 ## Catatan desain
 
 **Penulisan file paralel.** Semua segmen menulis ke satu `FileStream` yang sama,
