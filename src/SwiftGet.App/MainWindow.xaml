@@ -437,6 +437,15 @@
                                         <ColumnDefinition Width="96" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Kategori" Style="{StaticResource Caption}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedItem.CategoryText}"
+                                               Style="{StaticResource Caption}" />
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Ukuran" Style="{StaticResource Caption}" />
                                     <TextBlock Grid.Column="1" Text="{Binding SelectedItem.TotalSizeText}"
                                                Style="{StaticResource Numeric}" TextTrimming="CharacterEllipsis" />
@@ -530,6 +539,9 @@
                     <Button Content="Buka folder" Style="{StaticResource GhostButton}"
                             FontSize="11" Padding="10,5" Margin="0,0,8,0"
                             Command="{Binding OpenFolderCommand}" />
+                    <Button Content="Riwayat" Style="{StaticResource GhostButton}"
+                            FontSize="11" Padding="10,5" Margin="0,0,8,0"
+                            Click="OpenHistory_Click" />
                     <Button Content="Pengaturan" Style="{StaticResource GhostButton}"
                             FontSize="11" Padding="10,5"
                             Click="OpenSettings_Click" />

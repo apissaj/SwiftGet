@@ -48,6 +48,10 @@ public sealed class DownloadItemViewModel : ObservableObject
 
     public string Url { get; }
 
+    /// <summary>Kategori berkas dari ekstensi namanya; berubah bila server
+    /// memberi nama akhir lewat Content-Disposition.</summary>
+    public string CategoryText => FileCategories.LabelOf(FileName);
+
     public string Host
     {
         get
@@ -277,6 +281,7 @@ public sealed class DownloadItemViewModel : ObservableObject
     {
         FileName = Task.FileName;
         OnPropertyChanged(nameof(FileName));
+        OnPropertyChanged(nameof(CategoryText));
         OnPropertyChanged(nameof(ValidatorText));
         OnPropertyChanged(nameof(RangeSupportText));
         OnPropertyChanged(nameof(TargetFolder));

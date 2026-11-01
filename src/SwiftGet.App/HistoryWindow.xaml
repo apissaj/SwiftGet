@@ -1,0 +1,81 @@
+<Window x:Class="SwiftGet.App.HistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Riwayat Unduhan"
+        Height="520" Width="620"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}"
+        FontFamily="{DynamicResource AppFont}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Riwayat" Style="{StaticResource Heading}" />
+            <TextBlock x:Name="SummaryText" Style="{StaticResource Caption}" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource Card}">
+            <Grid>
+                <ListBox x:Name="HistoryList"
+                         Style="{StaticResource DownloadList}"
+                         BorderThickness="0" Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="2,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="{Binding FileName}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Grid.Row="0" Grid.Column="1"
+                                           Text="{Binding Category}"
+                                           Style="{StaticResource Caption}"
+                                           Margin="12,0,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Grid.Row="0" Grid.Column="2"
+                                           Text="{Binding SizeText}"
+                                           Style="{StaticResource Caption}"
+                                           Margin="12,0,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                                           Text="{Binding CompletedText}"
+                                           Style="{StaticResource Caption}"
+                                           Margin="0,2,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <TextBlock x:Name="EmptyText"
+                           Text="Belum ada riwayat"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Style="{StaticResource Caption}"
+                           Visibility="Collapsed" />
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="ClearButton" Content="Hapus riwayat"
+                    Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,0" Click="Clear_Click" />
+            <Button Content="Tutup" Style="{StaticResource PrimaryButton}" Click="Close_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

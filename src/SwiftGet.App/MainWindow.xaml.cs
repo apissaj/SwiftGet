@@ -164,6 +164,11 @@ public partial class MainWindow : Window
 
             var menu = new ContextMenuStrip();
             menu.Items.Add("Buka SwiftGet", null, (_, _) => ShowFromTray());
+            menu.Items.Add("Riwayat", null, (_, _) =>
+            {
+                ShowFromTray();
+                OpenHistory();
+            });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Jeda semua", null, (_, _) => _viewModel.PauseAllCommand.Execute(null));
             menu.Items.Add("Lanjutkan semua", null, (_, _) => _viewModel.ResumeAllCommand.Execute(null));
@@ -417,6 +422,14 @@ public partial class MainWindow : Window
         _settings.Save();
         _clipboard.Enabled = _settings.WatchClipboard;
         _viewModel.SetStatus("Pengaturan disimpan, berlaku untuk unduhan berikutnya");
+    }
+
+    private void OpenHistory_Click(object sender, RoutedEventArgs e) => OpenHistory();
+
+    private void OpenHistory()
+    {
+        var dialog = new HistoryWindow(_viewModel.History) { Owner = this };
+        dialog.ShowDialog();
     }
 }
 

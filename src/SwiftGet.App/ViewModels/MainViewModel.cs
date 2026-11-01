@@ -14,6 +14,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private readonly AppSettings _settings;
     private readonly Dispatcher _dispatcher;
+    private readonly HistoryStore _history = new();
     private readonly CancellationTokenSource _cts = new();
 
     private string _newUrl = "";
@@ -70,6 +71,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public DownloadManager Manager { get; }
 
     public DownloadsViewModel Downloads { get; }
+
+    /// <summary>Riwayat unduhan selesai; dibuka lewat tombol Riwayat.</summary>
+    public HistoryStore History => _history;
 
     public string DownloadDir => _settings.DownloadDirectory;
 
@@ -264,6 +268,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             if (task.State == DownloadState.Completed && item is not null)
             {
+                // Riwayat dicatat di sini: satu titik untuk semua jalur mulai
+                // (tambah manual, resume, lanjutkan semua, clipboard).
+                _history.Record(new HistoryEntry
+                {
+                    Id = task.Id,
+                    FileName = task.FileName,
+                    Url = task.Url.ToString(),
+                    FinalPath = task.FinalPath,
+                    TotalBytes = task.TotalLength,
+                    Category = FileCategories.LabelOf(task.FileName),
+                });
+
                 DownloadCompleted?.Invoke(item);
             }
         }
