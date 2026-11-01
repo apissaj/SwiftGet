@@ -1,0 +1,26 @@
+# Build results
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+publish/
+
+# Rider / VS
+.idea/
+.vs/
+*.user
+*.suo
+
+# Serena local overrides
+.serena/project.local.yml
+.serena/cache/
+
+# Test artifacts
+TestResults/
+*.trx
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
