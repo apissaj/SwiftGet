@@ -1,0 +1,96 @@
+<Window x:Class="SwiftGet.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pengaturan SwiftGet"
+        Height="520" Width="520"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}"
+        FontFamily="{DynamicResource AppFont}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Pengaturan" Style="{StaticResource Heading}" />
+            <TextBlock Text="Perubahan berlaku pada unduhan yang dimulai setelah disimpan."
+                       Style="{StaticResource Caption}" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+                <!-- Folder unduhan -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Folder unduhan" Style="{StaticResource Heading}" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="FolderBox" Grid.Column="0"
+                                     Style="{StaticResource UrlTextBox}" IsReadOnly="True" />
+                            <Button Grid.Column="1" Content="Pilih..."
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="8,0,0,0"
+                                    Click="BrowseFolder_Click" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Koneksi -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Koneksi &amp; segmentasi" Style="{StaticResource Heading}" />
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,4,0,12"
+                                   TextWrapping="Wrap"
+                                   Text="Unduhan dipecah menjadi beberapa bagian yang diunduh paralel. Lebih banyak koneksi biasanya lebih cepat, tetapi server tertentu membatasi jumlah koneksi per klien." />
+
+                        <TextBlock Text="Unduhan bersamaan" Style="{StaticResource Body}" />
+                        <Slider x:Name="ConcurrentSlider" Minimum="1" Maximum="8"
+                                TickFrequency="1" IsSnapToTickEnabled="True"
+                                ValueChanged="Concurrent_Changed" Margin="0,4,0,10" />
+                        <TextBlock x:Name="ConcurrentLabel" Style="{StaticResource Caption}" Margin="0,0,0,12" />
+
+                        <TextBlock Text="Bagian paralel per unduhan" Style="{StaticResource Body}" />
+                        <Slider x:Name="SegmentsSlider" Minimum="1" Maximum="32"
+                                TickFrequency="1" IsSnapToTickEnabled="True"
+                                ValueChanged="Segments_Changed" Margin="0,4,0,10" />
+                        <TextBlock x:Name="SegmentsLabel" Style="{StaticResource Caption}" />
+
+                        <TextBlock Text="Batas koneksi per host" Style="{StaticResource Body}" Margin="0,12,0,0" />
+                        <Slider x:Name="PerHostSlider" Minimum="1" Maximum="32"
+                                TickFrequency="1" IsSnapToTickEnabled="True"
+                                ValueChanged="PerHost_Changed" Margin="0,4,0,10" />
+                        <TextBlock x:Name="PerHostLabel" Style="{StaticResource Caption}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Perilaku -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="Perilaku" Style="{StaticResource Heading}" Margin="0,0,0,10" />
+                        <CheckBox x:Name="WatchClipboardBox" Content="Pantau clipboard dan tawarkan URL"
+                                  Margin="0,0,0,8" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <CheckBox x:Name="AutoStartBox" Content="Mulai unduhan otomatis saat URL terdeteksi"
+                                  Margin="0,0,0,8" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <CheckBox x:Name="MinimizeToTrayBox" Content="Tutup jendela ke tray (unduhan tetap berjalan)"
+                                  Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Batal" Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,0" Click="Cancel_Click" />
+            <Button Content="Simpan" Style="{StaticResource PrimaryButton}" Click="Save_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

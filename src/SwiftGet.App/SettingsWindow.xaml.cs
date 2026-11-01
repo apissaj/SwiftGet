@@ -1,0 +1,83 @@
+using System.Windows;
+using SwiftGet.App.Infrastructure;
+
+namespace SwiftGet.App;
+
+/// <summary>
+/// Dialog pengaturan. Mengubah salinan nilai lalu menerapkannya saat Simpan.
+/// </summary>
+public partial class SettingsWindow : Window
+{
+    private readonly AppSettings _settings;
+
+    public SettingsWindow(AppSettings settings)
+    {
+        InitializeComponent();
+
+        _settings = settings;
+
+        FolderBox.Text = settings.DownloadDirectory;
+
+        ConcurrentSlider.Value = settings.MaxConcurrentDownloads;
+        SegmentsSlider.Value = settings.MaxConnectionsPerDownload;
+        PerHostSlider.Value = settings.MaxConnectionsPerHost;
+
+        WatchClipboardBox.IsChecked = settings.WatchClipboard;
+        AutoStartBox.IsChecked = settings.StartDownloadsAutomatically;
+        MinimizeToTrayBox.IsChecked = settings.MinimizeToTray;
+
+        UpdateLabels();
+    }
+
+    private void Concurrent_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => UpdateLabels();
+
+    private void Segments_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => UpdateLabels();
+
+    private void PerHost_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => UpdateLabels();
+
+    private void UpdateLabels()
+    {
+        if (ConcurrentLabel is null) return;
+
+        ConcurrentLabel.Text = $"{(int)ConcurrentSlider.Value} unduhan sekaligus";
+        SegmentsLabel.Text = $"{(int)SegmentsSlider.Value} bagian per berkas";
+        PerHostLabel.Text = $"{(int)PerHostSlider.Value} koneksi maksimum ke server yang sama";
+    }
+
+    private void BrowseFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Pilih folder unduhan",
+            InitialDirectory = Directory.Exists(FolderBox.Text) ? FolderBox.Text : "",
+        };
+
+        if (dialog.ShowDialog(this) == true && !string.IsNullOrWhiteSpace(dialog.FolderName))
+        {
+            FolderBox.Text = dialog.FolderName;
+        }
+    }
+
+    private void Save_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.DownloadDirectory = FolderBox.Text;
+        _settings.MaxConcurrentDownloads = (int)ConcurrentSlider.Value;
+        _settings.MaxConnectionsPerDownload = (int)SegmentsSlider.Value;
+        _settings.MaxConnectionsPerHost = (int)PerHostSlider.Value;
+
+        _settings.WatchClipboard = WatchClipboardBox.IsChecked == true;
+        _settings.StartDownloadsAutomatically = AutoStartBox.IsChecked == true;
+        _settings.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
+
+        _settings.Normalize();
+
+        DialogResult = true;
+        Close();
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        DialogResult = false;
+        Close();
+    }
+}

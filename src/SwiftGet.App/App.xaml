@@ -1,9 +1,18 @@
 ﻿<Application x:Class="SwiftGet.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:SwiftGet.App"
-             StartupUri="MainWindow.xaml">
+             xmlns:infra="clr-namespace:SwiftGet.App.Infrastructure"
+             ShutdownMode="OnMainWindowClose">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <infra:FractionToPercentConverter x:Key="PctConverter" />
+            <infra:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <infra:ZeroToVisibleConverter x:Key="ZeroToVisible" />
+            <infra:StateToBrushConverter x:Key="StateBrushConverter" />
+        </ResourceDictionary>
     </Application.Resources>
 </Application>
