@@ -36,6 +36,10 @@ public sealed class DownloadManifest
 
     public string? LastModifiedRaw { get; set; }
 
+    public string? ChecksumAlgorithm { get; set; }
+
+    public string? ChecksumValue { get; set; }
+
     public string? ContentType { get; set; }
 
     public DownloadState State { get; set; } = DownloadState.Queued;

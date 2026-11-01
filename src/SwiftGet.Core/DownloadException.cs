@@ -31,6 +31,9 @@ public enum DownloadErrorKind
     /// <summary>Server mengirim data yang tidak sesuai rentang yang diminta.</summary>
     CorruptResponse,
 
+    /// <summary>Checksum tidak cocok, berkas hasil unduhan rusak.</summary>
+    Corruption,
+
     /// <summary>Ruang disk tidak cukup.</summary>
     DiskFull,
 

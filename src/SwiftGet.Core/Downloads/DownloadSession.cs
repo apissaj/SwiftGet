@@ -136,6 +136,14 @@ public sealed class DownloadSession : IAsyncDisposable
         }
         catch (DownloadException ex)
         {
+            if (ex.Kind == DownloadErrorKind.Corruption)
+            {
+                // Segmen yang tersimpan adalah bagian dari berkas yang terbukti
+                // salah. Nolkan kemajuan supaya resume mengunduh ulang dari awal,
+                // bukan menyusun ulang data korup yang sama terus-menerus.
+                _task.ResetSegments();
+            }
+
             _task.SetState(DownloadState.Failed, ex.Message);
             PublishProgress();
         }
@@ -154,6 +162,8 @@ public sealed class DownloadSession : IAsyncDisposable
         _task.SupportsRanges = probe.CanSegment;
         _task.ETag = probe.ETag;
         _task.LastModifiedRaw = probe.LastModifiedRaw;
+        _task.ChecksumAlgorithm = probe.ExpectedChecksumAlgorithm;
+        _task.ChecksumValue = probe.ExpectedChecksumValue;
 
         if (probe.FileNameFromServer && probe.SuggestedFileName is { Length: > 0 } suggested)
         {
@@ -383,6 +393,36 @@ public sealed class DownloadSession : IAsyncDisposable
 
         part.CommitAs(_task.FinalPath, overwrite: true);
         _partFile = null;
+
+        if (!string.IsNullOrWhiteSpace(_task.ChecksumAlgorithm) && !string.IsNullOrWhiteSpace(_task.ChecksumValue))
+        {
+            string? calculated;
+            try
+            {
+                calculated = await Storage.Checksum.ComputeAsync(
+                    _task.FinalPath, _task.ChecksumAlgorithm, ct).ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // Berkas tidak bisa dibaca untuk hash (mis. dikunci antivirus
+                // sesaat setelah rename). Verifikasi dilewati, bukan memfailkan
+                // unduhan yang datanya sudah lengkap.
+                calculated = null;
+            }
+
+            // Algoritma tidak dikenal juga mengembalikan null: server menawarkan
+            // checksum yang tidak bisa dihitung, bukan berkas yang salah.
+            if (calculated is not null &&
+                !string.Equals(calculated, _task.ChecksumValue, StringComparison.OrdinalIgnoreCase))
+            {
+                try { File.Delete(_task.FinalPath); }
+                catch (IOException) { /* dibiarkan; manifest tetap tercatat korup */ }
+
+                throw new DownloadException(DownloadErrorKind.Corruption,
+                    $"Integritas berkas rusak! Hasil unduhan tidak cocok dengan checksum server. " +
+                    $"Diharapkan: {_task.ChecksumValue}, dihitung: {calculated}.");
+            }
+        }
 
         _task.SetState(DownloadState.Completed);
         PublishProgress();

@@ -1,4 +1,5 @@
-﻿using SwiftGet.Core;
+﻿using System.Security.Cryptography;
+using SwiftGet.Core;
 using SwiftGet.Core.Downloads;
 using SwiftGet.Core.Http;
 using SwiftGet.Core.Scheduling;
@@ -310,6 +311,146 @@ public sealed class DownloaderIntegrationTests : IAsyncLifetime
         Assert.NotNull(loaded);
         Assert.Equal(2, loaded!.Segments.Count);
         Assert.Equal(1000, loaded.Segments[0].BytesDone);
+    }
+
+    [Fact]
+    public async Task Checksum_Sha256_Benar_Menghasilkan_Completed()
+    {
+        _server.Content = MakePayload(1024 * 1024);
+        _server.ChecksumSha256 = Convert.ToHexString(
+            SHA256.HashData(_server.Content)).ToLowerInvariant();
+
+        DownloadTask task = NewTask();
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget();
+
+        await using var session = new DownloadSession(task, http, budget, store, maxConnections: 4);
+        await session.RunAsync();
+
+        Assert.Equal(DownloadState.Completed, task.State);
+
+        // Bukti byte-per-byte: checksum hanya bisa cocok bila seluruh isi file benar.
+        byte[] actual = await File.ReadAllBytesAsync(task.FinalPath);
+        Assert.Equal(_server.Content, actual);
+    }
+
+    [Fact]
+    public async Task Checksum_Sha256_Salah_Menghapus_File_Dan_Menolkan_Segmen()
+    {
+        _server.Content = MakePayload(1024 * 1024);
+        // Checksum yang benar tapi dibalik posisinya agar pasti tidak cocok.
+        byte[] digest = SHA256.HashData(_server.Content);
+        Array.Reverse(digest);
+        _server.ChecksumSha256 = Convert.ToHexString(digest).ToLowerInvariant();
+
+        string id = Guid.NewGuid().ToString("N");
+        Directory.CreateDirectory(OutDir);
+        var task = new DownloadTask(id, _server.UrlFor("corrupt.bin"), OutDir, "corrupt.bin");
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget();
+
+        await using var session = new DownloadSession(task, http, budget, store, maxConnections: 4);
+        await session.RunAsync();
+
+        Assert.Equal(DownloadState.Failed, task.State);
+        Assert.Contains("Integritas berkas rusak", task.LastError);
+
+        // File final yang terbukti korup tidak boleh tertinggal di disk.
+        Assert.False(File.Exists(task.FinalPath), "File final korup tidak boleh ada di disk.");
+
+        // Semua segmen task dinolkan: resume harus mengunduh ulang dari awal.
+        Assert.All(task.GetSegments(), s => Assert.Equal(0, s.BytesDone));
+
+        // Manifest yang tersimpan juga harus mencermatkan kondisi tersebut.
+        DownloadManifest? manifest = await store.LoadAsync(id);
+        Assert.NotNull(manifest);
+        Assert.Equal("sha256", manifest!.ChecksumAlgorithm);
+        Assert.All(manifest.Segments, s => Assert.Equal(0, s.BytesDone));
+    }
+
+    [Fact]
+    public async Task Resume_Dengan_Checksum_Terpersist_Tetap_Terverifikasi()
+    {
+        _server.Content = MakePayload(2 * 1024 * 1024);
+        string checksum = Convert.ToHexString(SHA256.HashData(_server.Content)).ToLowerInvariant();
+
+        string id = Guid.NewGuid().ToString("N");
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget();
+
+        // Tahap 1: buat manifest yang sedang berjalan, lengkap dengan checksum
+        // dan segmen parsial, seperti unduhan yang ditutup di tengah jalan.
+        var task = new DownloadTask(id, _server.UrlFor("resume-cs.bin"), OutDir, "resume-cs.bin");
+        Directory.CreateDirectory(OutDir);
+
+        ProbeResult probe = await http.ProbeAsync(task.Url);
+        task.TotalLength = probe.ContentLength;
+        task.SupportsRanges = probe.CanSegment;
+        task.ETag = probe.ETag;
+        task.ChecksumAlgorithm = "sha256";
+        task.ChecksumValue = checksum;
+
+        var segments = SegmentPlanner.Plan(probe.ContentLength!.Value, 2);
+        foreach (var s in segments)
+        {
+            typeof(Segment).GetProperty(nameof(Segment.BytesDone))!.SetValue(s, s.Length / 2);
+        }
+        task.SetSegments(segments);
+
+        string partPath = store.GetPartPath(id);
+        using (var part = PartFile.Open(partPath, probe.ContentLength.Value))
+        {
+            foreach (var s in segments)
+            {
+                int half = (int)(s.BytesDone);
+                await part.WriteAtAsync(s.Start, _server.Content.AsMemory((int)s.Start, half), default);
+            }
+        }
+
+        task.SetState(DownloadState.Paused);
+        await store.SaveAsync(task.ToManifest());
+
+        // Tahap 2: pulihkan dari manifest — checksum ikut termuat — lalu lanjutkan.
+        DownloadTask restored = DownloadTask.FromManifest((await store.LoadAsync(id))!);
+        Assert.Equal("sha256", restored.ChecksumAlgorithm);
+        Assert.Equal(checksum, restored.ChecksumValue);
+
+        await using var session = new DownloadSession(restored, http, budget, store, maxConnections: 2);
+        await session.RunAsync();
+
+        // Checksum terverifikasi lagi di akhir resume: kalau tidak, unduhan
+        // yang diteruskan dari data lama bisa saja lolos tanpa pemeriksaan.
+        Assert.Equal(DownloadState.Completed, restored.State);
+
+        byte[] actual = await File.ReadAllBytesAsync(restored.FinalPath);
+        Assert.Equal(_server.Content, actual);
+    }
+
+    [Fact]
+    public async Task Digest_Header_Sha256_Base64_Terverifikasi_EndToEnd()
+    {
+        _server.Content = MakePayload(512 * 1024);
+        // SHA-256 dalam base64, seperti format header Digest (RFC 3230).
+        _server.Digest = "sha-256=" + Convert.ToBase64String(SHA256.HashData(_server.Content));
+
+        DownloadTask task = NewTask();
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget();
+
+        await using var session = new DownloadSession(task, http, budget, store, maxConnections: 4);
+        await session.RunAsync();
+
+        // Jalur lengkap: probe membaca Digest, checksum dipersist ke task,
+        // lalu diverifikasi setelah file final selesai.
+        Assert.Equal(DownloadState.Completed, task.State);
+        Assert.Equal("sha256", task.ChecksumAlgorithm);
+
+        byte[] actual = await File.ReadAllBytesAsync(task.FinalPath);
+        Assert.Equal(_server.Content, actual);
     }
 }
 

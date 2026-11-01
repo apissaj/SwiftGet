@@ -264,6 +264,17 @@ public sealed class HttpRangeClient : IDisposable
             ? string.Join(",", lm)
             : resp.Headers.TryGetValues("Last-Modified", out var lm2) ? string.Join(",", lm2) : null;
 
+        string? GetHeader(string name)
+        {
+            if (resp.Headers.TryGetValues(name, out var values))
+                return string.Join(",", values);
+            if (resp.Content?.Headers.TryGetValues(name, out var cValues) == true)
+                return string.Join(",", cValues);
+            return null;
+        }
+
+        var (checksumAlgo, checksumVal) = HeaderParsing.ExtractChecksum(GetHeader);
+
         return new ProbeResult
         {
             FinalUri = uri,
@@ -273,6 +284,8 @@ public sealed class HttpRangeClient : IDisposable
             LastModifiedRaw = lastModified,
             SuggestedFileName = dispositionName,
             ContentType = resp.Content.Headers.ContentType?.MediaType,
+            ExpectedChecksumAlgorithm = checksumAlgo,
+            ExpectedChecksumValue = checksumVal,
         };
     }
 

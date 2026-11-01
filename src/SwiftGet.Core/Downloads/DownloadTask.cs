@@ -45,6 +45,10 @@ public sealed class DownloadTask
 
     public Uri? FinalUri { get; internal set; }
 
+    public string? ChecksumAlgorithm { get; internal set; }
+
+    public string? ChecksumValue { get; internal set; }
+
     public DownloadState State
     {
         get { lock (_gate) return _state; }
@@ -70,6 +74,20 @@ public sealed class DownloadTask
         {
             _segments.Clear();
             _segments.AddRange(segments);
+        }
+    }
+
+    /// <summary>
+    /// Nolkan kemajuan semua segmen. Dipanggil setelah hasil unduhan dinyatakan
+    /// korup oleh verifikasi checksum: segmen yang tersimpan di manifest adalah
+    /// bagian dari berkas yang terbukti salah, jadi resume harus mengunduh ulang
+    /// dari nol, bukan menyusun ulang data yang sama.
+    /// </summary>
+    internal void ResetSegments()
+    {
+        lock (_gate)
+        {
+            foreach (Segment s in _segments) s.BytesDone = 0;
         }
     }
 
@@ -162,6 +180,8 @@ public sealed class DownloadTask
                 SupportsRanges = SupportsRanges,
                 ETag = ETag,
                 LastModifiedRaw = LastModifiedRaw,
+                ChecksumAlgorithm = ChecksumAlgorithm,
+                ChecksumValue = ChecksumValue,
                 State = _state,
                 LastError = _lastError,
                 Segments = _segments.Select(s => new DownloadManifest.SegmentRecord
@@ -189,6 +209,8 @@ public sealed class DownloadTask
             ETag = manifest.ETag,
             LastModifiedRaw = manifest.LastModifiedRaw,
             FinalUri = manifest.FinalUrl is null ? null : new Uri(manifest.FinalUrl),
+            ChecksumAlgorithm = manifest.ChecksumAlgorithm,
+            ChecksumValue = manifest.ChecksumValue,
         };
 
         task._lastError = manifest.LastError;

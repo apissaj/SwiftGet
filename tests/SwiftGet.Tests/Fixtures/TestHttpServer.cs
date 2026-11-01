@@ -42,6 +42,18 @@ public sealed class TestHttpServer : IAsyncDisposable
     /// <summary>Bila diisi, dikirim sebagai Content-Disposition.</summary>
     public string? ContentDisposition { get; set; }
 
+    /// <summary>Bila diisi, dikirim sebagai header Digest (RFC 3230).</summary>
+    public string? Digest { get; set; }
+
+    /// <summary>Bila diisi, dikirim sebagai header Content-MD5.</summary>
+    public string? ContentMd5 { get; set; }
+
+    /// <summary>Bila diisi, dikirim sebagai header X-Checksum-SHA256.</summary>
+    public string? ChecksumSha256 { get; set; }
+
+    /// <summary>Bila diisi, dikirim sebagai header X-Goog-Hash.</summary>
+    public string? GoogHash { get; set; }
+
     /// <summary>Bila true, semua permintaan dijawab 404.</summary>
     public bool NotFound { get; set; }
 
@@ -88,6 +100,7 @@ public sealed class TestHttpServer : IAsyncDisposable
                 res.AddHeader("Accept-Ranges", "bytes");
                 if (ETag is not null) res.AddHeader("ETag", ETag);
                 if (ContentDisposition is not null) res.AddHeader("Content-Disposition", ContentDisposition);
+                AddChecksumHeaders(res);
                 res.ContentType = "application/octet-stream";
                 res.ContentLength64 = Content.Length;
                 res.Close();
@@ -119,6 +132,7 @@ public sealed class TestHttpServer : IAsyncDisposable
                 res.AddHeader("Accept-Ranges", "bytes");
                 res.AddHeader("Content-Range", $"bytes {from}-{actualEnd}/{Content.Length}");
                 if (ETag is not null) res.AddHeader("ETag", ETag);
+                AddChecksumHeaders(res);
                 res.ContentType = "application/octet-stream";
                 res.ContentLength64 = length;
 
@@ -132,6 +146,7 @@ public sealed class TestHttpServer : IAsyncDisposable
             res.AddHeader("Accept-Ranges", IgnoreRanges ? "none" : "bytes");
             if (ETag is not null) res.AddHeader("ETag", ETag);
             if (ContentDisposition is not null) res.AddHeader("Content-Disposition", ContentDisposition);
+            AddChecksumHeaders(res);
             res.ContentType = "application/octet-stream";
             res.ContentLength64 = Content.Length;
 
@@ -141,6 +156,15 @@ public sealed class TestHttpServer : IAsyncDisposable
         catch (HttpListenerException) { /* klien menutup koneksi */ }
         catch (ObjectDisposedException) { /* server ditutup */ }
         catch (IOException) { /* klien memutus di tengah tulis */ }
+    }
+
+    /// <summary>Kirim header checksum opsional yang diisi oleh test.</summary>
+    private void AddChecksumHeaders(HttpListenerResponse res)
+    {
+        if (Digest is not null) res.AddHeader("Digest", Digest);
+        if (ContentMd5 is not null) res.AddHeader("Content-MD5", ContentMd5);
+        if (ChecksumSha256 is not null) res.AddHeader("X-Checksum-SHA256", ChecksumSha256);
+        if (GoogHash is not null) res.AddHeader("X-Goog-Hash", GoogHash);
     }
 
     private static bool TryParseRange(string header, out long from, out long to)

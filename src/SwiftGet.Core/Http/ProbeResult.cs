@@ -32,11 +32,16 @@ public sealed class ProbeResult
     /// <summary>True bila nama file berasal dari <c>Content-Disposition</c>, bukan dari URL.</summary>
     public bool FileNameFromServer => !string.IsNullOrWhiteSpace(SuggestedFileName);
 
-    /// <summary>
-    /// True bila unduhan bisa dipecah menjadi beberapa segmen.
+    /// <summary>True bila unduhan bisa dipecah menjadi beberapa segmen.
     /// Butuh panjang konten yang diketahui dan server yang menghormati Range.
     /// </summary>
     public bool CanSegment => SupportsRanges && ContentLength is > 0;
+
+    /// <summary>Algoritma checksum dari server (sha256/md5), jika ada.</summary>
+    public string? ExpectedChecksumAlgorithm { get; init; }
+
+    /// <summary>Nilai checksum dalam lowercase hex, jika ada.</summary>
+    public string? ExpectedChecksumValue { get; init; }
 
     public override string ToString() =>
         $"len={ContentLength?.ToString() ?? "?"} ranges={SupportsRanges} etag={ETag ?? "-"}";
@@ -54,5 +59,7 @@ public sealed class ProbeResult
         LastModifiedRaw = LastModifiedRaw,
         SuggestedFileName = fileName,
         ContentType = ContentType,
+        ExpectedChecksumAlgorithm = ExpectedChecksumAlgorithm,
+        ExpectedChecksumValue = ExpectedChecksumValue,
     };
 }

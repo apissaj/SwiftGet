@@ -51,6 +51,7 @@ public sealed class RetryPolicy
         DownloadErrorKind.AccessDenied => false,
         DownloadErrorKind.InvalidUrl => false,
         DownloadErrorKind.ContentChanged => false,
+        DownloadErrorKind.Corruption => false, // korup di klien; retry atas data sama tidak akan menyembuhkan
         DownloadErrorKind.Canceled => false,
         _ => false,
     };

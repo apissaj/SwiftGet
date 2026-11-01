@@ -191,6 +191,104 @@ public static class HeaderParsing
         if (cleaned.Length > 180) cleaned = cleaned[..180];
         return cleaned;
     }
+
+    /// <summary>
+    /// Ekstrak checksum dari header respons.
+    /// Mendukung Digest (RFC 3230), Content-MD5, X-Checksum-*/X-File-*,
+    /// dan X-Goog-Hash (Google Cloud Storage). Nama header pencarian tidak
+    /// perlu divariasikan kapitalisasinya: pencarian header HTTP memang
+    /// tidak peka huruf besar-kecil.
+    /// </summary>
+    public static (string? Algorithm, string? ValueHex) ExtractChecksum(Func<string, string?> getHeader)
+    {
+        // 1. Coba Digest (RFC 3230); pilih algoritma terkuat yang ditawarkan.
+        string? digest = getHeader("Digest");
+        if (!string.IsNullOrWhiteSpace(digest))
+        {
+            var parsed = Storage.Checksum.ParseDigestHeader(digest);
+            string[] strength = ["sha512", "sha384", "sha256", "sha1", "md5"];
+
+            foreach (string preferred in strength)
+            {
+                var match = parsed.FirstOrDefault(p => p.Algorithm == preferred);
+                if (match.Algorithm is null) continue;
+
+                try
+                {
+                    byte[] bytes = Convert.FromBase64String(match.ValueBase64);
+                    string hex = Convert.ToHexString(bytes).ToLowerInvariant();
+                    return (match.Algorithm, hex);
+                }
+                catch (FormatException) { }
+            }
+        }
+
+        // 2. Coba X-Checksum-* atau X-File-* (hex murni, tanpa base64).
+        (string Header, string Algorithm, int Length)[] customHeaders =
+        [
+            ("X-Checksum-SHA256", "sha256", 64),
+            ("X-File-SHA256", "sha256", 64),
+            ("X-Checksum-SHA1", "sha1", 40),
+            ("X-File-SHA1", "sha1", 40),
+            ("X-Checksum-MD5", "md5", 32),
+            ("X-File-MD5", "md5", 32),
+        ];
+
+        foreach (var (header, algorithm, length) in customHeaders)
+        {
+            string? val = getHeader(header);
+            if (string.IsNullOrWhiteSpace(val)) continue;
+
+            string clean = val.Trim().ToLowerInvariant();
+            if (clean.Length == length && IsHexString(clean)) return (algorithm, clean);
+        }
+
+        // 3. Coba X-Goog-Hash (format "md5=base64,crc32c=base64"; crc32c
+        //    tidak didukung, jadi hanya md5 yang dipakai).
+        string? goog = getHeader("X-Goog-Hash");
+        if (!string.IsNullOrWhiteSpace(goog))
+        {
+            foreach (string part in goog.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int eq = part.IndexOf('=');
+                if (eq <= 0) continue;
+
+                string algorithm = part[..eq].Trim().ToLowerInvariant();
+                string body = part[(eq + 1)..].Trim();
+                if (algorithm != "md5") continue;
+
+                try
+                {
+                    byte[] bytes = Convert.FromBase64String(body);
+                    return ("md5", Convert.ToHexString(bytes).ToLowerInvariant());
+                }
+                catch (FormatException) { }
+            }
+        }
+
+        // 4. Coba Content-MD5 (base64, standar lama).
+        string? contentMd5 = getHeader("Content-MD5");
+        if (!string.IsNullOrWhiteSpace(contentMd5))
+        {
+            try
+            {
+                byte[] bytes = Convert.FromBase64String(contentMd5.Trim());
+                return ("md5", Convert.ToHexString(bytes).ToLowerInvariant());
+            }
+            catch (FormatException) { }
+        }
+
+        return (null, null);
+    }
+
+    private static bool IsHexString(string s)
+    {
+        foreach (char c in s)
+        {
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+        }
+        return true;
+    }
 }
 
 /// <summary>
