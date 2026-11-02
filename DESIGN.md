@@ -398,14 +398,26 @@ Diukur lewat rumus luminans WCAG, dikunci oleh test.
 
 ## 16. Celah yang diketahui
 
-Ditulis terbuka supaya tidak terbaca sebagai sudah beres.
+Ditulis terbuka supaya tidak terbaca sebagai sudah beres. Daftar di bawah
+adalah keadaan setelah Rilis 2; celah lama (tema, perangkap fokus,
+reduce-motion, penyaring, urut kolom) sudah tertutup pada fase A sampai D —
+rinciannya di `docs/delivery-gate-rilis-2.md`.
 
-- **Pilihan tema belum tersimpan** antar sesi, dan belum mengikuti tema Windows.
-- **Panel periksa di layar sempit** masih menjadi lapisan sederhana; belum ada
-  perangkap fokus penuh untuk pembaca layar.
-- **"Kurangi gerakan"** membaca preferensi Windows saat mulai, tetapi tidak
-  bereaksi bila preferensi diubah ketika aplikasi sudah berjalan.
-- **Filter daftar** belum ada; keadaan "tidak ada hasil filter" sudah
-  dirancang tetapi belum dapat dicapai sampai filter dibuat.
-- **Urut kolom** belum tersedia. Bila ditambahkan, hanya Status dan Ukuran,
-  karena hanya keduanya yang menjawab keputusan pengguna.
+- **Seleksi baris hilang saat daftar dibangun ulang.** Penyaring membangun
+  ulang koleksi tampil, dan ListBox mengosongkan `SelectedItem` setiap kali
+  itu terjadi — selama unduhan berjalan, panel periksa menampilkan label
+  tanpa nilai. Ditemukan saat pengambilan tangkapan layar untuk README;
+  perbaikannya (menjaga seleksi lintas pembangunan ulang) belum dikerjakan.
+- **DASH dengan beberapa AdaptationSet** (video dan audio terpisah) ditolak
+  dengan pesan; menggabungkannya butuh muxing yang belum dikerjakan.
+- **SegmentTemplate DASH** dengan penomoran berformat (`$Number%05d$`) dan
+  `SegmentTimeline` belum diurai; hanya `$Number$` polos dengan
+  `mediaPresentationDuration`.
+- **HLS live** (playlist yang bertambah) tidak didukung; unduhan menganggap
+  playlist VOD yang jumlah segmennya tetap.
+- **Bookmarklet mengirim URL halaman**, bukan mendeteksi tautan media di
+  halaman itu; penangkapan referer dan cookie menunggu ekstensi browser.
+- **Kategori belum menjadi penyaring.** Kategori tampil di panel periksa dan
+  riwayat; baris penyaring status tetap empat kondisi sesuai keputusan di
+  bagian 11. Bila kelak kategori jadi penyaring, keputusan itu harus ditinjau
+  di dokumen ini lebih dulu, bukan dilewati.
