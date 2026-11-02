@@ -173,6 +173,18 @@
                                     Click="SortButton_Click"
                                     ToolTip="Urutkan daftar" />
                         </StackPanel>
+
+                        <!-- Kategori: dimensi penyaring kedua, satu dropdown -->
+                        <StackPanel Orientation="Horizontal" Margin="14,0,0,0">
+                            <TextBlock Text="Kategori" Style="{StaticResource Caption}"
+                                       VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <ComboBox x:Name="CategoryCombo"
+                                      Style="{StaticResource CategoryCombo}"
+                                      ItemsSource="{Binding Downloads.CategoryOptions}"
+                                      SelectedItem="{Binding Downloads.SelectedCategoryOption, Mode=TwoWay}"
+                                      Width="140" VerticalAlignment="Center"
+                                      ToolTip="Saring berdasarkan jenis berkas" />
+                        </StackPanel>
                     </StackPanel>
 
                     <TextBlock Grid.Column="2" Text="{Binding StatusMessage}"

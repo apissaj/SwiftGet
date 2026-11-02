@@ -293,6 +293,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             DownloadItemViewModel? item = Downloads.Items.FirstOrDefault(i => i.Id == task.Id);
             item?.RefreshFromTask();
+            // Nama berkas bisa berubah setelah probe; kategori mengikuti nama.
+            Downloads.ApplyFilterAndSort();
 
             StatusMessage = task.State switch
             {

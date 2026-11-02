@@ -432,6 +432,42 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
         _ => "Terbaru",
     };
 
+    /// <summary>Pilihan dropdown kategori; <see cref="Value"/> null berarti tanpa penyaring.</summary>
+    public sealed record CategoryOption(string Label, DownloadCategory? Value)
+    {
+        public override string ToString() => Label;
+    }
+
+    private static readonly List<CategoryOption> CategoryOptionList = new()
+    {
+        new("Semua kategori", null),
+        new(FileCategories.Label(DownloadCategory.Video), DownloadCategory.Video),
+        new(FileCategories.Label(DownloadCategory.Audio), DownloadCategory.Audio),
+        new(FileCategories.Label(DownloadCategory.Gambar), DownloadCategory.Gambar),
+        new(FileCategories.Label(DownloadCategory.Dokumen), DownloadCategory.Dokumen),
+        new(FileCategories.Label(DownloadCategory.Arsip), DownloadCategory.Arsip),
+        new(FileCategories.Label(DownloadCategory.Program), DownloadCategory.Program),
+        new(FileCategories.Label(DownloadCategory.Lainnya), DownloadCategory.Lainnya),
+    };
+
+    /// <summary>Isi dropdown kategori; statis karena taksonomi tidak berubah saat berjalan.</summary>
+    public IReadOnlyList<CategoryOption> CategoryOptions => CategoryOptionList;
+
+    private CategoryOption _selectedCategoryOption = CategoryOptionList[0];
+
+    public CategoryOption SelectedCategoryOption
+    {
+        get => _selectedCategoryOption;
+        set
+        {
+            if (!SetProperty(ref _selectedCategoryOption, value)) return;
+            ApplyFilterAndSort();
+        }
+    }
+
+    /// <summary>Kategori aktif dari pilihan dropdown; null berarti semua.</summary>
+    private DownloadCategory? SelectedCategory => _selectedCategoryOption.Value;
+
     /// <summary>Riwayat kecepatan total, untuk sparkline header.</summary>
     public ObservableCollection<double> SpeedHistory { get; }
 
@@ -520,6 +556,10 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
             DownloadFilter.Completed => query.Where(i => i.State == DownloadState.Completed),
             _ => query,
         };
+
+        // Kategori menindak status: baris harus lolos keduanya.
+        if (SelectedCategory is DownloadCategory category)
+            query = query.Where(i => FileCategories.Classify(i.FileName) == category);
 
         query = _sort switch
         {

@@ -241,6 +241,14 @@ yang menempati ruang. Merangkum baris selesai membuat daftar tetap terbaca saat
 berisi puluhan entri. Ini menjawab R-14 secara terbalik: bukan semua kartu sama,
 melainkan **baris mengikuti keadaan isinya**.
 
+**Penyaring kategori** (ditambahkan purna-Rilis 2, meninjau keputusan penyaring
+di bagian 11): status tetap empat kondisi di radio; kategori menjadi dimensi
+kedua dalam satu dropdown di baris aksi yang sama — satu kontrol, bukan delapan
+chip. Alasannya: "tampilkan hanya video" adalah pertanyaan nyata pengguna
+(kategori tampil di panel periksa dan riwayat, jadi pertanyaannya sudah ada di
+aplikasi), dan keduanya tersusun: baris harus lolos status DAN kategori.
+Keputusan R-26 tetap berlaku — tidak ada kontrol yang tidak melakukan apa pun.
+
 ---
 
 ## 8. Panel periksa (fitur interaktif utama)

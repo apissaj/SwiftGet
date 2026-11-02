@@ -1,4 +1,5 @@
 using System.Windows.Threading;
+using SwiftGet.App.Infrastructure;
 using SwiftGet.App.ViewModels;
 using SwiftGet.Core.Downloads;
 
@@ -188,5 +189,126 @@ public sealed class DownloadsViewModelTests
 
         Assert.Equal(2, vm.VisibleItems.Count);
         Assert.Equal(failedLarge.Id, vm.VisibleItems[0].Id);
+    }
+
+    // ---- Kategori sebagai penyaring ----
+
+    /// <summary>Pilihan kategori Video di dropdown, dipakai beberapa test.</summary>
+    private static DownloadsViewModel.CategoryOption OpsiKategori(DownloadsViewModel vm, DownloadCategory kategori) =>
+        vm.CategoryOptions.First(o => o.Value == kategori);
+
+    [Fact]
+    public void CategoryOptions_DelapanPilihan_PertamaSemuaKategori()
+    {
+        var vm = MakeViewModel(MakeTask("a.bin"));
+
+        Assert.Equal(8, vm.CategoryOptions.Count);
+        Assert.Null(vm.CategoryOptions[0].Value);
+        Assert.Equal("Semua kategori", vm.CategoryOptions[0].Label);
+
+        // Pilihan bawaan adalah "Semua kategori", bukan kategori pertama.
+        Assert.Equal(vm.CategoryOptions[0], vm.SelectedCategoryOption);
+
+        // Tujuh pilihan sisanya mencakup tiap kategori tepat sekali, dengan
+        // label dari taksonomi yang sama dipakai panel periksa.
+        Assert.Equal(7, vm.CategoryOptions.Count(o => o.Value is not null));
+        Assert.Equal(Enum.GetValues<DownloadCategory>().Length,
+            vm.CategoryOptions.Where(o => o.Value is not null)
+                .Select(o => o.Value!.Value).Distinct().Count());
+        foreach (var opsi in vm.CategoryOptions.Skip(1))
+            Assert.Equal(FileCategories.Label(opsi.Value!.Value), opsi.Label);
+    }
+
+    [Fact]
+    public void SelectedCategory_MenyaringBerdasarkanKlasifikasiNama()
+    {
+        var video = MakeTask("film.mp4");
+        var audio = MakeTask("lagu.mp3");
+        var arsip = MakeTask("paket.zip");
+
+        var vm = MakeViewModel(video, audio, arsip);
+        vm.SelectedCategoryOption = OpsiKategori(vm, DownloadCategory.Video);
+
+        Assert.Single(vm.VisibleItems);
+        Assert.Equal(video.Id, vm.VisibleItems[0].Id);
+        Assert.False(vm.IsEmpty);
+        Assert.False(vm.IsFilteredEmpty);
+
+        // Kembali ke "Semua kategori" memunculkan semuanya lagi.
+        vm.SelectedCategoryOption = vm.CategoryOptions[0];
+        Assert.Equal(3, vm.VisibleItems.Count);
+    }
+
+    [Fact]
+    public void SelectedCategory_TanpaHasil_IsFilteredEmptyDanKembaliNormal()
+    {
+        var vm = MakeViewModel(MakeTask("a.bin"), MakeTask("b.bin"));
+        vm.SelectedCategoryOption = OpsiKategori(vm, DownloadCategory.Video);
+
+        Assert.Empty(vm.VisibleItems);
+        Assert.False(vm.IsEmpty);        // daftar sebenarnya berisi
+        Assert.True(vm.IsFilteredEmpty); // hanya penyaring yang mengosongkannya
+
+        vm.SelectedCategoryOption = vm.CategoryOptions[0];
+        Assert.Equal(2, vm.VisibleItems.Count);
+        Assert.False(vm.IsFilteredEmpty);
+    }
+
+    [Fact]
+    public void KategoriDanStatus_HanyaYangLolosKeduanya()
+    {
+        var arsipAktif = MakeTask("paket-aktif.zip");
+        var arsipSelesai = MakeTask("paket-selesai.zip");
+        var videoAktif = MakeTask("film-aktif.mp4");
+
+        var vm = MakeViewModel(arsipAktif, arsipSelesai, videoAktif);
+        vm.Items.First(i => i.Id == arsipAktif.Id).ApplyState(DownloadState.Downloading, null);
+        vm.Items.First(i => i.Id == arsipSelesai.Id).ApplyState(DownloadState.Completed, null);
+        vm.Items.First(i => i.Id == videoAktif.Id).ApplyState(DownloadState.Downloading, null);
+
+        vm.Filter = DownloadFilter.Active;
+        vm.SelectedCategoryOption = OpsiKategori(vm, DownloadCategory.Arsip);
+
+        Assert.Single(vm.VisibleItems);
+        Assert.Equal(arsipAktif.Id, vm.VisibleItems[0].Id);
+
+        // Urutan pengaturan tidak boleh mengubah hasil: kategori dulu, baru status.
+        vm.SelectedCategoryOption = vm.CategoryOptions[0];
+        vm.SelectedCategoryOption = OpsiKategori(vm, DownloadCategory.Arsip);
+        vm.Filter = DownloadFilter.All;
+        vm.Filter = DownloadFilter.Active;
+
+        Assert.Single(vm.VisibleItems);
+        Assert.Equal(arsipAktif.Id, vm.VisibleItems[0].Id);
+    }
+
+    [Fact]
+    public void NamaBerkasBerubah_KlasifikasiMengikutiNamaBaru()
+    {
+        var naik = MakeTask("berkas-tanpa-nama"); // awalnya Lainnya
+        var turun = MakeTask("klip.mov");         // awalnya Video
+
+        var vm = MakeViewModel(naik, turun);
+        var itemNaik = vm.Items.First(i => i.Id == naik.Id);
+        var itemTurun = vm.Items.First(i => i.Id == turun.Id);
+
+        vm.SelectedCategoryOption = OpsiKategori(vm, DownloadCategory.Video);
+
+        Assert.Single(vm.VisibleItems);
+        Assert.Equal(turun.Id, vm.VisibleItems[0].Id);
+
+        // Probe selesai: server memberi nama akhir lewat Content-Disposition,
+        // maka klasifikasi harus mengikuti nama baru, bukan nama lama.
+        naik.FileName = "film-akhir.mp4";
+        turun.FileName = "berkas-tanpa-ekstensi";
+        itemNaik.RefreshFromTask();
+        itemTurun.RefreshFromTask();
+        vm.ApplyFilterAndSort();
+
+        Assert.Single(vm.VisibleItems);
+        Assert.Equal(naik.Id, vm.VisibleItems[0].Id);
+        Assert.Equal("film-akhir.mp4", itemNaik.FileName);
+        Assert.Equal("Video", itemNaik.CategoryText);
+        Assert.Equal("Lainnya", itemTurun.CategoryText);
     }
 }
