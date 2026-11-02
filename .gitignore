@@ -24,3 +24,7 @@ TestResults/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Node
+node_modules/
+package-lock.json

@@ -119,6 +119,11 @@ async function tungguHistory(mengandung, timeoutMs = 20000) {
   catat("Picker membuka daftar kandidat", rows >= 1, `${rows} baris`);
   await hal.screenshot({ path: SHOT("e2e-picker.png") });
 
+  const adaArsip = await picker.locator(".swiftget-picker-row", { hasText: "arsip-contoh" }).count();
+  catat("Kandidat tanpa ekstensi tertangkap lewat sites.json", adaArsip === 1, `${adaArsip} baris`);
+  const sg = await hal.evaluate(() => ({ ...document.documentElement.dataset }));
+  console.log("SG-DEBUG:", JSON.stringify(sg));
+
   await picker.locator(".swiftget-picker-row", { hasText: "playlist-240p" }).first().click();
   await picker.locator(".swiftget-picker-row:text-matches('^✓')").waitFor({ timeout: 8000 });
   catat("Kandidat m3u8 terkirim", true);

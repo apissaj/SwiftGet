@@ -55,6 +55,21 @@
   // Sinyal ke inject.js: listener sudah terpasang, antriannya boleh dilepas.
   window.postMessage({ __swiftget__: true, kind: "ready" }, location.origin);
 
+  // Konfigurasi per situs (tahap 3): dibaca langsung dari berkas ekstensi —
+  // tanpa transit service worker supaya tidak kalah cepat oleh fetch halaman.
+  fetch(chrome.runtime.getURL("sites.json"))
+    .then((r) => r.json())
+    .then((db) => {
+      const host = location.hostname;
+      const situs = (db.sites || []).find((s) =>
+        (s.hosts || []).some((h) => host === h || host.endsWith("." + h)));
+      window.postMessage({
+        __swiftget__: true, kind: "config",
+        responseRegexes: (situs && situs.responseRegexes) || [],
+      }, location.origin);
+    })
+    .catch(() => { });
+
   function updateBadge() {
     if (!domSiap) {
       badgeTunda = true;

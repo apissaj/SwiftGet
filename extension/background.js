@@ -1,7 +1,9 @@
 // Service worker MV3: jembatan antara panel di halaman dan endpoint lokal
 // SwiftGet. Tugasnya menambahkan yang tidak bisa diakses halaman: cookie
 // sesi browser (chrome.cookies) dan token endpoint (chrome.storage).
+// Konfigurasi per situs (sites.json) dibaca langsung oleh content script.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
   if (msg && msg.type === "swiftget-open-options") {
     chrome.runtime.openOptionsPage();
     return;

@@ -1,7 +1,7 @@
 import http.server, functools, os, threading, json
 
-SITE = os.path.join(os.environ['TEMP'], 'swiftget-e2e', 'site')
-LOG = os.path.join(os.environ['TEMP'], 'swiftget-e2e', 'requests.log')
+SITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'site')
+LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requests.log')
 
 class H(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw): super().__init__(*a, directory=SITE, **kw)

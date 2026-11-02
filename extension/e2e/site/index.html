@@ -11,6 +11,8 @@
       window.__mediaApi__ = j;
       document.getElementById("api-status").textContent = "API dimuat: " + j.player.source;
     });
+    // sengaja terlambat: konfigurasi situs dari ekstensi pasti sudah terpasang
+    setTimeout(() => fetch("/api/custom.json").then(r => r.json()).catch(() => {}), 400);
   </script>
   <p id="api-status">API belum dimuat</p>
 </body></html>
