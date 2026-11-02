@@ -24,6 +24,16 @@ public sealed class AppSettings
     public bool MinimizeToTray { get; set; } = true;
 
     /// <summary>
+    /// Endpoint lokal untuk bookmarklet: menerima URL dari browser lewat
+    /// http://127.0.0.1:{LocalEndpointPort}/. Mati secara bawaan; pengguna
+    /// yang memang menghendaki integrasi browser yang menyalakannya.
+    /// </summary>
+    public bool EnableLocalEndpoint { get; set; }
+
+    /// <summary>Port endpoint lokal. Hanya mengikat 127.0.0.1, bukan antarmuka lain.</summary>
+    public int LocalEndpointPort { get; set; } = 49160;
+
+    /// <summary>
     /// Tema terakhir yang dipilih pengguna. Null berarti ikuti tema Windows
     /// pada saat aplikasi dijalankan.
     /// </summary>
@@ -87,6 +97,7 @@ public sealed class AppSettings
         MaxConcurrentDownloads = Math.Clamp(MaxConcurrentDownloads, 1, 8);
         MaxConnectionsPerDownload = Math.Clamp(MaxConnectionsPerDownload, 1, 32);
         MaxConnectionsPerHost = Math.Clamp(MaxConnectionsPerHost, 1, 32);
+        LocalEndpointPort = Math.Clamp(LocalEndpointPort, 1024, 65535);
 
         if (string.IsNullOrWhiteSpace(DownloadDirectory))
         {

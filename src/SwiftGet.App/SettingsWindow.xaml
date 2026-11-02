@@ -80,7 +80,25 @@
                         <CheckBox x:Name="AutoStartBox" Content="Mulai unduhan otomatis saat URL terdeteksi"
                                   Margin="0,0,0,8" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <CheckBox x:Name="MinimizeToTrayBox" Content="Tutup jendela ke tray (unduhan tetap berjalan)"
-                                  Foreground="{DynamicResource TextPrimaryBrush}" />
+                                  Margin="0,0,0,12" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                        <TextBlock Text="Integrasi browser" Style="{StaticResource Heading}" Margin="0,0,0,6" />
+                        <CheckBox x:Name="LocalEndpointBox" Content="Terima unduhan dari bookmarklet browser"
+                                  Margin="0,0,0,6" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <Grid Margin="12,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Port" Style="{StaticResource Caption}"
+                                       VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox x:Name="PortBox" Grid.Column="1" Width="72"
+                                     Style="{StaticResource UrlTextBox}" />
+                            <TextBlock Grid.Column="2" Text="Hanya 127.0.0.1, bukan jaringan luar."
+                                       Style="{StaticResource Caption}" VerticalAlignment="Center"
+                                       Margin="10,0,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 

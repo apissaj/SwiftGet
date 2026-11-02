@@ -33,6 +33,9 @@ public partial class SettingsWindow : Window
         AutoStartBox.IsChecked = settings.StartDownloadsAutomatically;
         MinimizeToTrayBox.IsChecked = settings.MinimizeToTray;
 
+        LocalEndpointBox.IsChecked = settings.EnableLocalEndpoint;
+        PortBox.Text = settings.LocalEndpointPort.ToString();
+
         _ready = true;
         UpdateLabels();
     }
@@ -77,6 +80,11 @@ public partial class SettingsWindow : Window
         _settings.WatchClipboard = WatchClipboardBox.IsChecked == true;
         _settings.StartDownloadsAutomatically = AutoStartBox.IsChecked == true;
         _settings.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
+
+        _settings.EnableLocalEndpoint = LocalEndpointBox.IsChecked == true;
+        // Port yang tidak bisa diurai kembali ke nilai lama, bukan 0.
+        if (int.TryParse(PortBox.Text.Trim(), out int port))
+            _settings.LocalEndpointPort = port;
 
         _settings.Normalize();
 

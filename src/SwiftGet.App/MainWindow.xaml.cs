@@ -26,6 +26,7 @@ public partial class MainWindow : Window
 
     private SystemThemeWatcher? _themeWatcher;
     private MotionPreferenceWatcher? _motionWatcher;
+    private LocalEndpointServer? _localEndpoint;
     private FocusTrap? _focusTrap;
     private bool _inspectorOverlay;
 
@@ -101,7 +102,56 @@ public partial class MainWindow : Window
 
         SetupTray();
         SetupWatchers();
+        SetupLocalEndpoint();
         UpdateInspectorLayout();
+    }
+
+    /// <summary>
+    /// Endpoint bookmarklet hanya menyala bila pengguna menyalakannya di
+    /// pengaturan. Kegagalan bind (port dipakai aplikasi lain) bukan alasan
+    /// gagal start; cukup dilaporkan di baris status.
+    /// </summary>
+    private void SetupLocalEndpoint()
+    {
+        if (!_settings.EnableLocalEndpoint) return;
+
+        try
+        {
+            _localEndpoint = new LocalEndpointServer(_settings.LocalEndpointPort, AddFromBrowserAsync);
+            _localEndpoint.Start();
+            _viewModel.SetStatus("Menerima unduhan dari browser di " + _localEndpoint.BaseUrl);
+        }
+        catch (Exception ex)
+        {
+            _localEndpoint = null;
+            _viewModel.SetStatus("Endpoint browser tidak aktif: " + ex.Message);
+        }
+    }
+
+    private async Task<LocalEndpointServer.AddResult> AddFromBrowserAsync(string url)
+    {
+        // Endpoint berjalan di thread pool; operasi daftar harus di thread UI.
+        Task<(bool Ok, string Message)> op = await Dispatcher.InvokeAsync(
+            () => _viewModel.AddFromLocalEndpointAsync(url)).Task.ConfigureAwait(false);
+        var (ok, message) = await op.ConfigureAwait(false);
+        return new LocalEndpointServer.AddResult(ok, message);
+    }
+
+    /// <summary>Sesuaikan endpoint dengan pengaturan terbaru (saklar dan port).</summary>
+    private void ApplyLocalEndpointSetting()
+    {
+        if (!_settings.EnableLocalEndpoint)
+        {
+            _localEndpoint?.Dispose();
+            _localEndpoint = null;
+            return;
+        }
+
+        // Salakan ulang tanpa peduli apa yang berubah: listener lama ditutup
+        // lebih dulu, jadi tidak ada dua listener merebut port yang sama.
+        _localEndpoint?.Dispose();
+        _localEndpoint = null;
+        SetupLocalEndpoint();
     }
 
     /// <summary>
@@ -309,6 +359,8 @@ public partial class MainWindow : Window
         _closeRequested = true;
         CleanupTray();
         _clipboard.Dispose();
+        _localEndpoint?.Dispose();
+        _localEndpoint = null;
 
         _themeWatcher?.Dispose();
         _themeWatcher = null;
@@ -421,6 +473,7 @@ public partial class MainWindow : Window
 
         _settings.Save();
         _clipboard.Enabled = _settings.WatchClipboard;
+        ApplyLocalEndpointSetting();
         _viewModel.SetStatus("Pengaturan disimpan, berlaku untuk unduhan berikutnya");
     }
 

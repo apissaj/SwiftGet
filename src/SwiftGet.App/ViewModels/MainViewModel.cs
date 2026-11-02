@@ -223,6 +223,41 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         StatusMessage = $"{task.FileName} masuk antrean";
     }
 
+    /// <summary>
+    /// Terima URL dari endpoint lokal (bookmarklet). Tidak lewat AddCommand
+    /// supaya hasilnya bisa dilaporkan ke browser, bukan diam bila tombol
+    /// tidak bisa jalan; dan tidak menyentuh kotak URL karena pengguna tidak
+    /// sedang mengetik di sana.
+    /// </summary>
+    public async System.Threading.Tasks.Task<(bool Ok, string Message)> AddFromLocalEndpointAsync(string url)
+    {
+        try
+        {
+            Directory.CreateDirectory(_settings.DownloadDirectory);
+
+            DownloadTask task = Manager.Add(url, _settings.DownloadDirectory);
+            DownloadItemViewModel item = Downloads.Add(task);
+            SelectedItem = item;
+            RefreshCommandStates();
+
+            if (_settings.StartDownloadsAutomatically)
+            {
+                await StartTaskAsync(task).ConfigureAwait(true);
+            }
+            else
+            {
+                StatusMessage = $"{task.FileName} masuk antrean dari browser";
+            }
+
+            return (true, task.FileName);
+        }
+        catch (DownloadException ex)
+        {
+            StatusMessage = ex.Message;
+            return (false, ex.Message);
+        }
+    }
+
     private DownloadTask? TryAdd()
     {
         string url = (_newUrl ?? "").Trim();
