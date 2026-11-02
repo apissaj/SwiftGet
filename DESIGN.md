@@ -403,11 +403,6 @@ adalah keadaan setelah Rilis 2; celah lama (tema, perangkap fokus,
 reduce-motion, penyaring, urut kolom) sudah tertutup pada fase A sampai D —
 rinciannya di `docs/delivery-gate-rilis-2.md`.
 
-- **Seleksi baris hilang saat daftar dibangun ulang.** Penyaring membangun
-  ulang koleksi tampil, dan ListBox mengosongkan `SelectedItem` setiap kali
-  itu terjadi — selama unduhan berjalan, panel periksa menampilkan label
-  tanpa nilai. Ditemukan saat pengambilan tangkapan layar untuk README;
-  perbaikannya (menjaga seleksi lintas pembangunan ulang) belum dikerjakan.
 - **DASH dengan beberapa AdaptationSet** (video dan audio terpisah) ditolak
   dengan pesan; menggabungkannya butuh muxing yang belum dikerjakan.
 - **SegmentTemplate DASH** dengan penomoran berformat (`$Number%05d$`) dan

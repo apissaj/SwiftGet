@@ -73,10 +73,14 @@ semuanya cacat penyambungan, bukan cacat logika murni:
 
 ## Celah yang masih terbuka
 
-Lihat DESIGN.md bagian 16. Yang paling terasa penggunanya: seleksi baris
-hilang setiap daftar dibangun ulang penyaring, sehingga panel periksa tampak
-kosong selama unduhan berjalan. Ditemukan saat sesi foto untuk README
-sesi ini dan sengaja didokumentasikan, bukan disembunyikan.
+Lihat DESIGN.md bagian 16.
+
+Catatan purna-delivery: celah "seleksi baris hilang saat daftar dibangun
+ulang" yang dilaporkan di bawah sudah diperbaiki sesudah rilis dokumen ini —
+`ApplyFilterAndSort` kini merekonsiliasi `VisibleItems` secara in-place
+(Remove/Insert/Move) alih-alih Clear dan isi ulang, sehingga seleksi ListBox
+dan panel periksa bertahan selama unduhan berjalan. Diverifikasi visual:
+panel tetap terisi penuh dengan unduhan aktif.
 
 ## Kebersihan
 

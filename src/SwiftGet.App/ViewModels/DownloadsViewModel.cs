@@ -497,10 +497,15 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Terapkan penyaring dan pengurutan ke <see cref="VisibleItems"/>.
-    /// Sengaja rebuilding, bukan penyaringan in-place: daftar unduhan jarang
-    /// lebih dari beberapa puluh baris, dan rebuild membuat urutan selalu
-    /// benar tanpa harus melacak posisi tiap item.
+    /// Terapkan penyaring dan pengurutan ke <see cref="VisibleItems"/> dengan
+    /// rekonsiliasi in-place (Remove/Insert/Move), bukan Clear dan isi ulang.
+    /// <para>
+    /// Clear memicu Reset dan melempar seluruh seleksi ListBox — panel periksa
+    /// jadi tampak kosong setiap daftar disaring ulang, yang terjadi berkali-
+    /// kali per detik selama unduhan berjalan. Dengan perubahan parsial,
+    /// seleksi dan container baris ikut bertahan. Daftar unduhan jarang lebih
+    /// dari beberapa puluh baris, jadi pencarian linier di sini murah.
+    /// </para>
     /// </summary>
     public void ApplyFilterAndSort()
     {
@@ -523,8 +528,22 @@ public sealed class DownloadsViewModel : ObservableObject, IDisposable
             _ => query,
         };
 
-        VisibleItems.Clear();
-        foreach (DownloadItemViewModel item in query) VisibleItems.Add(item);
+        List<DownloadItemViewModel> desired = query.ToList();
+
+        for (int i = VisibleItems.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(VisibleItems[i]))
+                VisibleItems.RemoveAt(i);
+        }
+
+        for (int target = 0; target < desired.Count; target++)
+        {
+            int current = VisibleItems.IndexOf(desired[target]);
+            if (current < 0)
+                VisibleItems.Insert(target, desired[target]);
+            else if (current != target)
+                VisibleItems.Move(current, target);
+        }
     }
 
     /// <summary>
