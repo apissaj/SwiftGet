@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using SwiftGet.Core;
 using SwiftGet.Core.Downloads;
+using SwiftGet.Core.Downloads.Media;
 using SwiftGet.Core.Scheduling;
 using SwiftGet.Core.Storage;
 using SwiftGet.Tests.Fixtures;
@@ -9,9 +11,10 @@ using Xunit;
 namespace SwiftGet.Tests;
 
 /// <summary>
-/// Uji integrasi unduhan playlist media (HLS) lewat DownloadManager: penggabungan
-/// segmen berurutan, pilihan varian, percobaan ulang segmen, pause/resume berbasis
-/// index segmen, penolakan playlist terenkripsi, dan progres.
+/// Uji integrasi unduhan playlist media (HLS dan DASH) lewat DownloadManager:
+/// penggabungan segmen berurutan, pilihan varian, percobaan ulang segmen,
+/// pause/resume berbasis index segmen, penolakan playlist terenkripsi, progres,
+/// dan unduhan DASH dua jalur (video + audio) yang digabung lewat ffmpeg.
 /// </summary>
 public sealed class MediaDownloadTests : IAsyncLifetime
 {
@@ -39,12 +42,13 @@ public sealed class MediaDownloadTests : IAsyncLifetime
     private string StateDir => Path.Combine(_workDir, "state");
     private string OutDir => Path.Combine(_workDir, "out");
 
-    private DownloadManager BuatManager(int maxConnectionsPerDownload)
+    private DownloadManager BuatManager(int maxConnectionsPerDownload, string? ffmpegPath = null)
     {
         var manager = new DownloadManager(StateDir, new SchedulerOptions
         {
             MaxConnectionsPerDownload = maxConnectionsPerDownload,
             MaxConcurrentDownloads = 1,
+            FfmpegPath = ffmpegPath,
         });
         _managers.Add(manager);
         return manager;
@@ -331,5 +335,240 @@ public sealed class MediaDownloadTests : IAsyncLifetime
             for (int i = 1; i <= 3; i++)
                 Assert.Equal(referer, _server.LastRefererPerPath[$"/video/seg-{i}.ts"]);
         }
+    }
+
+    // ---------- 9. DASH dua jalur (video + audio) ----------
+
+    private static readonly string[] NamaSegmenDash =
+        ["video-init.m4s", "video-1.m4s", "video-2.m4s", "audio-init.m4s", "audio-1.m4s", "audio-2.m4s"];
+
+    private static string MpdDuaJalur() =>
+        """
+        <?xml version="1.0" encoding="utf-8"?>
+        <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static">
+          <Period>
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="2000000" mimeType="video/mp4">
+                <SegmentList timescale="1" duration="1">
+                  <Initialization sourceURL="video-init.m4s"/>
+                  <SegmentURL media="video-1.m4s"/>
+                  <SegmentURL media="video-2.m4s"/>
+                </SegmentList>
+              </Representation>
+            </AdaptationSet>
+            <AdaptationSet mimeType="audio/mp4">
+              <Representation id="a" bandwidth="128000" mimeType="audio/mp4">
+                <SegmentList timescale="1" duration="1">
+                  <Initialization sourceURL="audio-init.m4s"/>
+                  <SegmentURL media="audio-1.m4s"/>
+                  <SegmentURL media="audio-2.m4s"/>
+                </SegmentList>
+              </Representation>
+            </AdaptationSet>
+          </Period>
+        </MPD>
+        """;
+
+    private void RouteDashDuaJalur(byte[] videoInit, byte[] video1, byte[] video2,
+        byte[] audioInit, byte[] audio1, byte[] audio2)
+    {
+        _server.RouteText("/dash/manifest.mpd", MpdDuaJalur());
+        _server.Route("/dash/video-init.m4s", videoInit);
+        _server.Route("/dash/video-1.m4s", video1);
+        _server.Route("/dash/video-2.m4s", video2);
+        _server.Route("/dash/audio-init.m4s", audioInit);
+        _server.Route("/dash/audio-1.m4s", audio1);
+        _server.Route("/dash/audio-2.m4s", audio2);
+    }
+
+    /// <summary>
+    /// Segmen DASH asli (init + dua fragmen) hasil ffmpeg. Mux -c copy hanya
+    /// menerima data media yang valid, jadi uji penggabungan tidak bisa memakai
+    /// byte pola; encoder mpeg4/aac dipilih karena ada di setiap build ffmpeg.
+    /// </summary>
+    private static async Task<Dictionary<string, byte[]>> HasilkanSegmenDash(
+        string ffmpegPath, string direktori, string sumber, string encoder)
+    {
+        Directory.CreateDirectory(direktori);
+        // Muxer dash memperlakukan output sebagai URL; backslash membuatnya
+        // gagal mengurai folder manifest sehingga segmen ditulis di CWD.
+        string tujuan = Path.Combine(direktori, "manifest.mpd").Replace('\\', '/');
+        var start = new ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            Arguments = $"-y -loglevel error -f lavfi -i {sumber} {encoder} " +
+                        "-f dash -seg_duration 1 -window_size 5 " +
+                        "-init_seg_name init.m4s -media_seg_name seg-$Number$.m4s " +
+                        $"\"{tujuan}\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+        };
+
+        using Process proses = Process.Start(start)
+            ?? throw new InvalidOperationException("ffmpeg tidak bisa dijalankan.");
+        string stderr = await proses.StandardError.ReadToEndAsync().ConfigureAwait(false);
+        await proses.WaitForExitAsync().ConfigureAwait(false);
+        Assert.True(proses.ExitCode == 0, $"ffmpeg gagal membuat segmen uji ({sumber}):\n{stderr}");
+
+        return new Dictionary<string, byte[]>
+        {
+            ["init.m4s"] = await File.ReadAllBytesAsync(Path.Combine(direktori, "init.m4s")),
+            ["seg-1.m4s"] = await File.ReadAllBytesAsync(Path.Combine(direktori, "seg-1.m4s")),
+            ["seg-2.m4s"] = await File.ReadAllBytesAsync(Path.Combine(direktori, "seg-2.m4s")),
+        };
+    }
+
+    [Fact]
+    public async Task Dash_MultiTrack_Tanpa_Ffmpeg_Gagal_Sebelum_Mengunduh()
+    {
+        _server.RouteText("/dash/manifest.mpd", MpdDuaJalur());
+        foreach (string nama in NamaSegmenDash)
+            _server.Route($"/dash/{nama}", Isi(1, 64));
+
+        // Lokasi ffmpeg sengaja menunjuk ke tempat yang pasti kosong: salinan
+        // pengguna bersifat mutlak, tidak boleh jatuh menebak ke PATH.
+        string ffmpegHilang = Path.Combine(
+            Path.GetTempPath(), "swiftget-tidak-ada", Guid.NewGuid().ToString("N"), "ffmpeg.exe");
+
+        DownloadManager manager = BuatManager(maxConnectionsPerDownload: 2, ffmpegPath: ffmpegHilang);
+        DownloadTask task = TambahUnduhan(manager, "dash/manifest.mpd");
+        await manager.StartAsync(task.Id);
+
+        Assert.Equal(DownloadState.Failed, task.State);
+        Assert.NotNull(task.LastError);
+        Assert.Contains("ffmpeg", task.LastError);
+
+        // Gagal lebih awal: MPD dibaca, tetapi tidak ada satu byte segmen pun
+        // yang diunduh dan tidak ada berkas akhir yang tertinggal.
+        Assert.Equal(1, _server.GetRequestCountFor("/dash/manifest.mpd"));
+        foreach (string nama in NamaSegmenDash)
+            Assert.Equal(0, _server.GetRequestCountFor($"/dash/{nama}"));
+        Assert.False(File.Exists(task.FinalPath));
+    }
+
+    [Fact]
+    public async Task Dash_MultiTrack_Mux_Sukses_Dengan_Ffmpeg_Sungguhan()
+    {
+        // Tanpa ffmpeg di lingkungan (mis. CI) penggabungan tidak bisa dibuktikan.
+        string? ffmpeg = FfmpegLocator.Find(null);
+        if (ffmpeg is null) return;
+
+        string gen = Path.Combine(_workDir, "dashgen");
+        Dictionary<string, byte[]> video = await HasilkanSegmenDash(ffmpeg, Path.Combine(gen, "video"),
+            "testsrc=duration=2:size=128x128:rate=10", "-c:v mpeg4 -q:v 6");
+        Dictionary<string, byte[]> audio = await HasilkanSegmenDash(ffmpeg, Path.Combine(gen, "audio"),
+            "sine=frequency=440:duration=2", "-c:a aac -b:a 24k");
+        RouteDashDuaJalur(video["init.m4s"], video["seg-1.m4s"], video["seg-2.m4s"],
+            audio["init.m4s"], audio["seg-1.m4s"], audio["seg-2.m4s"]);
+
+        var progres = new ConcurrentQueue<DownloadProgress>();
+        DownloadManager manager = BuatManager(maxConnectionsPerDownload: 2);
+        manager.ProgressChanged += progres.Enqueue;
+
+        DownloadTask task = TambahUnduhan(manager, "dash/manifest.mpd");
+        await manager.StartAsync(task.Id);
+
+        Assert.Equal(DownloadState.Completed, task.State);
+        Assert.True(task.IsMedia);
+
+        // Nama hasil dari segmen video pertama; .m4s diganti .mp4.
+        Assert.Equal("manifest.mp4", task.FileName);
+        string hasil = Path.Combine(OutDir, task.FileName);
+        Assert.True(File.Exists(hasil), $"Berkas hasil tidak ada: {hasil}");
+        Assert.True(new FileInfo(hasil).Length > 0);
+
+        // Kedua part dan manifest dibersihkan setelah mux sukses.
+        var store = new ManifestStore(StateDir);
+        Assert.False(File.Exists(store.GetPartPath(task.Id)));
+        Assert.False(File.Exists(store.GetPartPath(task.Id) + ".audio"));
+        Assert.False(File.Exists(store.GetManifestPath(task.Id)));
+
+        // MPD dan tiap segmen (init + 2 media per jalur) diminta tepat satu kali.
+        Assert.Equal(1, _server.GetRequestCountFor("/dash/manifest.mpd"));
+        foreach (string nama in NamaSegmenDash)
+            Assert.Equal(1, _server.GetRequestCountFor($"/dash/{nama}"));
+
+        // Total segmen progres = jumlah entri playlist video + audio
+        // (init ikut dihitung: 3 + 3).
+        List<DownloadProgress> snapshot = progres.ToList();
+        Assert.Contains(snapshot, p => p.TotalSegments == 6);
+        Assert.Equal(6, snapshot.Last().TotalSegments);
+        Assert.Equal(6, snapshot.Last().CompletedSegments);
+    }
+
+    [Fact]
+    public async Task Dash_MultiTrack_Resume_Dari_MediaTracksState()
+    {
+        // Resume juga berakhir di mux, jadi butuh ffmpeg dan segmen asli.
+        string? ffmpeg = FfmpegLocator.Find(null);
+        if (ffmpeg is null) return;
+
+        string gen = Path.Combine(_workDir, "dashgen");
+        Dictionary<string, byte[]> video = await HasilkanSegmenDash(ffmpeg, Path.Combine(gen, "video"),
+            "testsrc=duration=2:size=128x128:rate=10", "-c:v mpeg4 -q:v 6");
+        Dictionary<string, byte[]> audio = await HasilkanSegmenDash(ffmpeg, Path.Combine(gen, "audio"),
+            "sine=frequency=440:duration=2", "-c:a aac -b:a 24k");
+        RouteDashDuaJalur(video["init.m4s"], video["seg-1.m4s"], video["seg-2.m4s"],
+            audio["init.m4s"], audio["seg-1.m4s"], audio["seg-2.m4s"]);
+
+        // Keadaan setelah sesi terputus: video tuntas, audio baru init + satu
+        // segmen. Part diisi sesuai itu, seperti yang ditulis sesi aslinya.
+        var store = new ManifestStore(StateDir);
+        string id = "dashresumemulti";
+        var awal = new DownloadTask(id, _server.UrlFor("dash/manifest.mpd"), OutDir)
+        {
+            IsMedia = true,
+            MediaSegmentCount = 3,
+            MediaTracksState = "3:3,2:3",
+        };
+        await store.SaveAsync(awal.ToManifest());
+        File.WriteAllBytes(store.GetPartPath(id),
+            Gabung(video["init.m4s"], video["seg-1.m4s"], video["seg-2.m4s"]));
+        File.WriteAllBytes(store.GetPartPath(id) + ".audio",
+            Gabung(audio["init.m4s"], audio["seg-1.m4s"]));
+
+        DownloadManager manager = BuatManager(maxConnectionsPerDownload: 2);
+        await manager.RestoreAsync();
+        DownloadTask? task = manager.Get(id);
+        Assert.NotNull(task);
+        Assert.Equal(DownloadState.Paused, task!.State);
+        Assert.Equal("3:3,2:3", task.MediaTracksState);
+
+        await manager.StartAsync(id);
+
+        Assert.Equal(DownloadState.Completed, task.State);
+        string hasil = Path.Combine(OutDir, task.FileName);
+        Assert.True(File.Exists(hasil), $"Berkas hasil tidak ada: {hasil}");
+        Assert.True(new FileInfo(hasil).Length > 0);
+
+        // Jalur video sudah tuntas: tidak satu pun URL video diminta ulang.
+        Assert.Equal(0, _server.GetRequestCountFor("/dash/video-init.m4s"));
+        Assert.Equal(0, _server.GetRequestCountFor("/dash/video-1.m4s"));
+        Assert.Equal(0, _server.GetRequestCountFor("/dash/video-2.m4s"));
+
+        // Audio: yang sudah tertulis tidak diulang, sisanya diambil sekali.
+        Assert.Equal(0, _server.GetRequestCountFor("/dash/audio-init.m4s"));
+        Assert.Equal(0, _server.GetRequestCountFor("/dash/audio-1.m4s"));
+        Assert.Equal(1, _server.GetRequestCountFor("/dash/audio-2.m4s"));
+        Assert.Equal(1, _server.GetRequestCountFor("/dash/manifest.mpd"));
+    }
+
+    [Fact]
+    public void MediaTracksState_RoundTrip_Melalui_Manifest()
+    {
+        var task = new DownloadTask("roundtrip01", new Uri("http://test.local/dash/manifest.mpd"),
+            Path.GetTempPath())
+        {
+            IsMedia = true,
+            MediaTracksState = "2:2,1:2",
+        };
+
+        DownloadManifest manifest = task.ToManifest();
+        Assert.Equal("2:2,1:2", manifest.MediaTracksState);
+
+        DownloadTask restored = DownloadTask.FromManifest(manifest);
+        Assert.Equal("2:2,1:2", restored.MediaTracksState);
+        Assert.True(restored.IsMedia);
     }
 }

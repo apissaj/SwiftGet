@@ -6,18 +6,21 @@ using SwiftGet.Core.Http;
 namespace SwiftGet.Core.Downloads.Media;
 
 /// <summary>
-/// Pengurai DASH MPD (.mpd) untuk kasus yang lazim: satu AdaptationSet,
-/// Representation terpilih dengan SegmentURL berurutan atau SegmentTemplate
-/// ber-$Number$. DASH menempatkan video dan audio di AdaptationSet terpisah;
-/// menggabungkan keduanya butuh muxing yang jauh lebih rumit, jadi yang
-/// dipilih jalur pertama dan hal itu dinyatakan terbuka di pesan galat bila
-/// playlist jelas multi-jalur.
+/// Pengurai DASH MPD (.mpd) untuk kasus yang lazim: SegmentURL berurutan atau
+/// SegmentTemplate ber-$Number$/SegmentTimeline. Video dan audio yang terpisah
+/// di beberapa AdaptationSet dikembalikan sebagai beberapa jalur terpisah —
+/// penggabungannya dikerjakan sesi unduhan lewat ffmpeg.
 /// </summary>
 public static class DashPlaylistParser
 {
     private static readonly XNamespace Ns = "urn:mpeg:dash:schema:mpd:2011";
 
-    public static MediaPlaylist Parse(string xml, Uri mpdUri)
+    /// <summary>
+    /// Urai MPD menjadi daftar jalur: satu playlist media per jenis
+    /// (video, audio) — Representasi dengan bandwidth terbesar yang dipilih.
+    /// AdaptationSet jenis lain (mis. teks/subtitle) diabaikan.
+    /// </summary>
+    public static List<MediaPlaylist> ParseTracks(string xml, Uri mpdUri)
     {
         XDocument doc;
         try
@@ -36,23 +39,54 @@ public static class DashPlaylistParser
                 "Berkas ini bukan MPD DASH yang dikenal.");
 
         XElement? period = mpd.Descendants(Ns + "Period").FirstOrDefault();
-        XElement? adaptation = period?.Descendants(Ns + "AdaptationSet").FirstOrDefault();
-        XElement? representation = adaptation?.Descendants(Ns + "Representation")
-            .OrderByDescending(r => (long?)r.Attribute("bandwidth") ?? 0)
-            .FirstOrDefault();
-
-        if (period is null || adaptation is null || representation is null)
+        if (period is null)
             throw new DownloadException(DownloadErrorKind.CorruptResponse,
-                "MPD DASH tidak memuat Representation apa pun.");
+                "MPD DASH tidak memuat Period apa pun.");
 
-        int adaptationCount = period.Descendants(Ns + "AdaptationSet").Count();
-        if (adaptationCount > 1)
-            throw new DownloadException(DownloadErrorKind.UnsupportedMedia,
-                "MPD DASH memisahkan video dan audio di beberapa AdaptationSet; " +
-                "penggabungan keduanya belum didukung.");
+        // Kelompokkan AdaptationSet menurut jenis media yang dijanjikan
+        // mimeType-nya ("video/mp4" → video, dst); pilih terbesar per jenis.
+        List<MediaPlaylist> tracks = new();
 
+        foreach (string kind in new[] { "video", "audio" })
+        {
+            XElement? adaptation = period.Descendants(Ns + "AdaptationSet")
+                .Where(a => ((string?)a.Attribute("mimeType") ?? "")
+                    .StartsWith(kind + "/", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(a => BestBandwidth(a))
+                .FirstOrDefault();
+
+            XElement? representation = adaptation?.Descendants(Ns + "Representation")
+                .OrderByDescending(r => (long?)r.Attribute("bandwidth") ?? 0)
+                .FirstOrDefault();
+
+            if (adaptation is null || representation is null) continue;
+
+            tracks.Add(BuildTrack(mpd, period, adaptation, representation, mpdUri));
+        }
+
+        if (tracks.Count == 0)
+            throw new DownloadException(DownloadErrorKind.CorruptResponse,
+                "MPD DASH tidak memuat Representation video atau audio apa pun.");
+
+        return tracks;
+    }
+
+    /// <summary>
+    /// Urai MPD menjadi satu playlist media. MPD dengan video dan audio
+    /// terpisah memakai <see cref="ParseTracks"/>; di sini jalur pertama yang
+    /// dikembalikan.
+    /// </summary>
+    public static MediaPlaylist Parse(string xml, Uri mpdUri) => ParseTracks(xml, mpdUri)[0];
+
+    private static long BestBandwidth(XElement adaptation) =>
+        adaptation.Descendants(Ns + "Representation")
+            .Max(r => (long?)r.Attribute("bandwidth") ?? 0);
+
+    private static MediaPlaylist BuildTrack(
+        XElement mpd, XElement period, XElement adaptation,
+        XElement representation, Uri mpdUri)
+    {
         string repId = (string?)representation.Attribute("id") ?? "";
-        long repBandwidth = (long?)representation.Attribute("bandwidth") ?? 0;
 
         var playlist = new MediaPlaylist { Kind = MediaPlaylistKind.Media, BaseUri = mpdUri };
         Uri ResolveIn(string? reference) => Resolve(mpdUri, reference);

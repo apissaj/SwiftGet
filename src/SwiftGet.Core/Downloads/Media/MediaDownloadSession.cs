@@ -18,6 +18,12 @@ namespace SwiftGet.Core.Downloads.Media;
 /// resume melanjutkan dari segmen berikutnya — berbeda dari unduhan Range
 /// yang melanjutkan byte.
 /// </para>
+/// <para>
+/// DASH yang memisahkan video dan audio menghasilkan dua jalur: keduanya
+/// diunduh satu per satu ke berkas sementara terpisah, lalu digabung dengan
+/// ffmpeg (-c copy, tanpa encode ulang). Tanpa ffmpeg, sesi gagal lebih awal
+/// dengan pesan yang menjelaskan cara mengaturnya.
+/// </para>
 /// </summary>
 public sealed class MediaDownloadSession : IDownloadSession
 {
@@ -31,6 +37,7 @@ public sealed class MediaDownloadSession : IDownloadSession
     private readonly int _maxConnections;
     private readonly RetryPolicy _retry;
     private readonly Action<DownloadProgress>? _onProgress;
+    private readonly string? _ffmpegConfigured;
 
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _manifestGate = new(1, 1);
@@ -39,18 +46,29 @@ public sealed class MediaDownloadSession : IDownloadSession
     private volatile bool _canceled;
     private bool _disposed;
 
-    // Keadaan progres yang diperbarui oleh penulis; dibaca oleh Publish().
+    /// <summary>Keadaan progres satu jalur; agregat keseluruhan dijumlahkan.</summary>
+    private sealed class TrackState
+    {
+        public required MediaPlaylist Playlist { get; init; }
+        public required string PartPath { get; init; }
+        public int StartIndex { get; set; }
+        public int Written { get; set; }
+        public long Bytes { get; set; }
+        public int Total { get; init; }
+    }
+
+    private readonly List<TrackState> _tracks = new();
     private readonly SpeedMeter _speed = new();
-    private long _bytesWritten;
-    private int _segmentsWritten;
-    private int _segmentTotal;
     private long _lastManifestWriteTicks;
     private readonly object _manifestWriteGate = new();
+
+    private DownloadException? _failure;
 
     public MediaDownloadSession(
         DownloadTask task, HttpRangeClient http, ConnectionBudget budget,
         ManifestStore store, int maxConnections,
-        RetryPolicy? retry = null, Action<DownloadProgress>? onProgress = null)
+        RetryPolicy? retry = null, Action<DownloadProgress>? onProgress = null,
+        string? ffmpegPath = null)
     {
         _task = task ?? throw new ArgumentNullException(nameof(task));
         _http = http ?? throw new ArgumentNullException(nameof(http));
@@ -59,6 +77,7 @@ public sealed class MediaDownloadSession : IDownloadSession
         _maxConnections = Math.Max(1, maxConnections);
         _retry = retry ?? new RetryPolicy();
         _onProgress = onProgress;
+        _ffmpegConfigured = ffmpegPath;
     }
 
     public DownloadTask Task => _task;
@@ -98,35 +117,83 @@ public sealed class MediaDownloadSession : IDownloadSession
             _task.SetState(DownloadState.Probing);
             Publish();
 
-            MediaPlaylist playlist = await FetchPlaylistAsync(_task.Url, ct).ConfigureAwait(false);
-
-            if (playlist.Kind == MediaPlaylistKind.Master)
-            {
-                // Ambil kualitas terbaik yang ditawarkan; pemilihan kualitas
-                // manual adalah kebijakan UI, bukan sesi.
-                MediaVariant variant = HlsPlaylistParser.PickVariant(playlist);
-                playlist = await FetchPlaylistAsync(variant.Url, ct).ConfigureAwait(false);
-            }
-
-            if (playlist.Kind != MediaPlaylistKind.Media || playlist.Segments.Count == 0)
+            List<MediaPlaylist> tracks = await FetchTracksAsync(_task.Url, ct).ConfigureAwait(false);
+            if (tracks.Any(t => t.Segments.Count == 0))
                 throw new DownloadException(DownloadErrorKind.CorruptResponse,
                     "Playlist tidak memuat segmen media apa pun.");
 
-            _task.FinalUri = playlist.BaseUri;
+            _task.FinalUri = tracks[0].BaseUri;
             _task.IsMedia = true;
             _task.SupportsRanges = false;
             _task.TotalLength = null;
-            _task.MediaSegmentCount = playlist.Segments.Count;
-            _segmentTotal = playlist.Segments.Count;
-            _task.FileName = FinalFileName(playlist);
+            _task.MediaSegmentCount = tracks[0].Segments.Count;
+            _task.FileName = FinalFileName(tracks[0]);
 
             string partPath = _store.GetPartPath(_task.Id);
-            int startIndex = ResolveResumeIndex(partPath, playlist);
+            string audioPartPath = partPath + ".audio";
+            bool multi = tracks.Count > 1;
+            string? ffmpeg = null;
+
+            if (multi)
+            {
+                // Gagal lebih awal sebelum byte apa pun diunduh: menggabungkan
+                // tanpa ffmpeg tidak mungkin, dan unduhan dua jalur jadi sia-sia.
+                ffmpeg = FfmpegLocator.Find(_ffmpegConfigured)
+                    ?? throw new DownloadException(DownloadErrorKind.UnsupportedMedia,
+                        "Penggabungan video dan audio butuh ffmpeg. Atur lokasinya di " +
+                        "pengaturan, letakkan ffmpeg.exe di folder aplikasi, atau " +
+                        "tambahkan ke PATH.");
+            }
+
+            _tracks.Clear();
+            if (multi)
+            {
+                List<(int Resume, int Count)>? saved = ParseTracksState(_task.MediaTracksState);
+                bool canResume = saved is not null
+                    && saved.Count == tracks.Count
+                    && saved.Select(s => s.Count).SequenceEqual(tracks.Select(t => t.Segments.Count))
+                    && File.Exists(partPath) && File.Exists(audioPartPath);
+
+                if (!canResume)
+                {
+                    DeleteQuietly(partPath);
+                    DeleteQuietly(audioPartPath);
+                    _task.MediaTracksState = null;
+                }
+
+                for (int i = 0; i < tracks.Count; i++)
+                {
+                    _tracks.Add(new TrackState
+                    {
+                        Playlist = tracks[i],
+                        PartPath = i == 0 ? partPath : audioPartPath,
+                        StartIndex = canResume ? saved![i].Resume : 0,
+                        Total = tracks[i].Segments.Count,
+                    });
+                }
+            }
+            else
+            {
+                _tracks.Add(new TrackState
+                {
+                    Playlist = tracks[0],
+                    PartPath = partPath,
+                    StartIndex = ResolveSingleResumeIndex(partPath, tracks[0]),
+                    Total = tracks[0].Segments.Count,
+                });
+            }
 
             await _budget.EnterDownloadAsync(ct).ConfigureAwait(false);
             try
             {
-                await DownloadSegmentsAsync(playlist, partPath, startIndex, ct).ConfigureAwait(false);
+                // Jalur dikerjakan satu per satu; di dalam jalur, segmen tetap
+                // diunduh paralel. Penggabungan bersamaan dua jalur menunggu
+                // kebutuhan nyata — kerumitannya belum membayar dirinya.
+                foreach (TrackState track in _tracks)
+                {
+                    if (track.StartIndex >= track.Total) continue; // jalur tuntas; resume langsung ke tahap mux
+                    await DownloadSegmentsAsync(track, ct).ConfigureAwait(false);
+                }
             }
             finally
             {
@@ -148,7 +215,7 @@ public sealed class MediaDownloadSession : IDownloadSession
                 return;
             }
 
-            await FinalizeAsync(partPath, ct).ConfigureAwait(false);
+            await FinalizeAsync(partPath, multi ? audioPartPath : null, ffmpeg, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_canceled)
         {
@@ -175,21 +242,32 @@ public sealed class MediaDownloadSession : IDownloadSession
         }
     }
 
-    /// <summary>Ambil teks playlist dan uraikan sesuai bentuknya.</summary>
-    private async Task<MediaPlaylist> FetchPlaylistAsync(Uri url, CancellationToken ct)
+    /// <summary>Ambil playlist (HLS/DASH) dan kembalikan jalur-jalurnya.</summary>
+    private async Task<List<MediaPlaylist>> FetchTracksAsync(Uri url, CancellationToken ct)
     {
         using FullResponse response = await _http.GetAsync(url, ct, _task.Referer).ConfigureAwait(false);
         string text = await ReadPlaylistTextAsync(response, ct).ConfigureAwait(false);
 
         string trimmed = text.TrimStart();
-        if (trimmed.StartsWith("#EXTM3U", StringComparison.Ordinal))
-            return HlsPlaylistParser.Parse(text, response.FinalUri);
-
         if (trimmed.StartsWith('<'))
-            return DashPlaylistParser.Parse(text, response.FinalUri);
+            return DashPlaylistParser.ParseTracks(text, response.FinalUri);
 
-        throw new DownloadException(DownloadErrorKind.CorruptResponse,
-            "URL ini tidak berisi playlist HLS atau DASH yang dikenal.");
+        if (!trimmed.StartsWith("#EXTM3U", StringComparison.Ordinal))
+            throw new DownloadException(DownloadErrorKind.CorruptResponse,
+                "URL ini tidak berisi playlist HLS atau DASH yang dikenal.");
+
+        MediaPlaylist playlist = HlsPlaylistParser.Parse(text, response.FinalUri);
+        if (playlist.Kind == MediaPlaylistKind.Master)
+        {
+            // Ambil kualitas terbaik yang ditawarkan; pemilihan kualitas
+            // manual adalah kebijakan UI, bukan sesi.
+            MediaVariant variant = HlsPlaylistParser.PickVariant(playlist);
+            using FullResponse media = await _http.GetAsync(variant.Url, ct, _task.Referer).ConfigureAwait(false);
+            playlist = HlsPlaylistParser.Parse(
+                await ReadPlaylistTextAsync(media, ct).ConfigureAwait(false), media.FinalUri);
+        }
+
+        return [playlist];
     }
 
     private static async Task<string> ReadPlaylistTextAsync(FullResponse response, CancellationToken ct)
@@ -231,11 +309,11 @@ public sealed class MediaDownloadSession : IDownloadSession
     }
 
     /// <summary>
-    /// Tentukan segmen pertama yang perlu diunduh lagi. Resume hanya sah bila
-    /// jumlah segmen playlist masih sama; playlist yang berbeda berarti
-    /// kontennya berganti, jadi mulai dari nol.
+    /// Tentukan segmen pertama yang perlu diunduh lagi untuk unduhan satu
+    /// jalur. Resume hanya sah bila jumlah segmen playlist masih sama;
+    /// playlist yang berbeda berarti kontennya berganti, jadi mulai dari nol.
     /// </summary>
-    private int ResolveResumeIndex(string partPath, MediaPlaylist playlist)
+    private int ResolveSingleResumeIndex(string partPath, MediaPlaylist playlist)
     {
         bool canResume = _task.MediaResumeIndex is int resume && resume > 0 &&
                          _task.MediaSegmentCount == playlist.Segments.Count &&
@@ -243,42 +321,67 @@ public sealed class MediaDownloadSession : IDownloadSession
 
         if (!canResume)
         {
-            try { File.Delete(partPath); }
-            catch (IOException) { /* berkas baru akan menimpanya saat dibuat */ }
-            catch (UnauthorizedAccessException) { }
-
+            DeleteQuietly(partPath);
             _task.MediaResumeIndex = 0;
-            _bytesWritten = 0;
-            _segmentsWritten = 0;
             return 0;
         }
 
-        _segmentsWritten = _task.MediaResumeIndex!.Value;
-        return _segmentsWritten;
+        return _task.MediaResumeIndex!.Value;
     }
 
-    private async System.Threading.Tasks.Task DownloadSegmentsAsync(
-        MediaPlaylist playlist, string partPath, int startIndex, CancellationToken ct)
+    private static void DeleteQuietly(string path)
     {
-        IReadOnlyList<MediaSegmentEntry> segments = playlist.Segments;
-        int total = segments.Count;
+        try { File.Delete(path); }
+        catch (IOException) { /* berkas baru akan menimpanya saat dibuat */ }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>
+    /// Baca keadaan resume multi-jalur berformat "resume:jumlah,resume:jumlah".
+    /// Salah bentuk berarti mulai dari nol, bukan gagal.
+    /// </summary>
+    private static List<(int Resume, int Count)>? ParseTracksState(string? state)
+    {
+        if (string.IsNullOrWhiteSpace(state)) return null;
+
+        var result = new List<(int, int)>();
+        foreach (string part in state.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] pair = part.Split(':');
+            if (pair.Length != 2 ||
+                !int.TryParse(pair[0], out int resume) ||
+                !int.TryParse(pair[1], out int count))
+                return null;
+            result.Add((resume, count));
+        }
+
+        return result;
+    }
+
+    private string BuildTracksState() =>
+        string.Join(",", _tracks.Select(t => $"{t.Written}:{t.Total}"));
+
+    private async System.Threading.Tasks.Task DownloadSegmentsAsync(TrackState track, CancellationToken ct)
+    {
+        IReadOnlyList<MediaSegmentEntry> segments = track.Playlist.Segments;
+        int total = track.Total;
 
         await using var output = new FileStream(
-            partPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read,
+            track.PartPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read,
             bufferSize: 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
         output.Seek(0, SeekOrigin.End);
-        _bytesWritten = output.Length;
-        _segmentsWritten = startIndex;
-        _task.MediaResumeIndex = startIndex;
+        track.Bytes = output.Length;
+        track.Written = track.StartIndex;
+        if (_tracks.Count == 1) _task.MediaResumeIndex = track.StartIndex;
 
         _task.SetState(DownloadState.Downloading);
         Publish();
 
-        // Koordinasi worker-penulis. Urutan penguncian: _fetchGate saja.
+        // Koordinasi worker-penulis. Urutan penguncian selalu _fetchGate saja.
         var fetchGate = new object();
         var completions = new Dictionary<int, TaskCompletionSource<byte[]>>();
-        int fetchCursor = startIndex;
-        int workerCount = Math.Min(_maxConnections, Math.Max(1, total - startIndex));
+        int fetchCursor = track.StartIndex;
+        int workerCount = Math.Min(_maxConnections, Math.Max(1, total - track.StartIndex));
 
         System.Threading.Tasks.Task Worker()
         {
@@ -316,15 +419,15 @@ public sealed class MediaDownloadSession : IDownloadSession
         // kedatangannya. Segmen yang belum tiba membuat penulis menunggu.
         try
         {
-            while (_segmentsWritten < total && !_paused && !_canceled)
+            while (track.Written < total && !_paused && !_canceled)
             {
                 TaskCompletionSource<byte[]> tcs;
                 lock (fetchGate)
                 {
-                    if (!completions.TryGetValue(_segmentsWritten, out tcs!))
+                    if (!completions.TryGetValue(track.Written, out tcs!))
                     {
                         tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-                        completions[_segmentsWritten] = tcs;
+                        completions[track.Written] = tcs;
                     }
                 }
 
@@ -334,14 +437,14 @@ public sealed class MediaDownloadSession : IDownloadSession
                     await output.WriteAsync(data, ct).ConfigureAwait(false);
                 await output.FlushAsync(ct).ConfigureAwait(false);
 
-                _bytesWritten += data.Length;
-                _segmentsWritten++;
-                _task.MediaResumeIndex = _segmentsWritten;
+                track.Bytes += data.Length;
+                track.Written++;
+                if (_tracks.Count == 1) _task.MediaResumeIndex = track.Written;
                 _speed.Record(data.Length);
                 Publish();
 
                 await SaveManifestThrottledAsync(ct).ConfigureAwait(false);
-                lock (fetchGate) completions.Remove(_segmentsWritten - 1);
+                lock (fetchGate) completions.Remove(track.Written - 1);
             }
         }
         catch (OperationCanceledException) when (_failure is not null)
@@ -353,8 +456,6 @@ public sealed class MediaDownloadSession : IDownloadSession
 
         await System.Threading.Tasks.Task.WhenAll(workers).ConfigureAwait(false);
     }
-
-    private DownloadException? _failure;
 
     private async Task<byte[]> FetchSegmentAsync(Uri url, CancellationToken ct)
     {
@@ -416,27 +517,37 @@ public sealed class MediaDownloadSession : IDownloadSession
         }
     }
 
-    private async System.Threading.Tasks.Task FinalizeAsync(string partPath, CancellationToken ct)
+    private async System.Threading.Tasks.Task FinalizeAsync(
+        string partPath, string? audioPartPath, string? ffmpeg, CancellationToken ct)
     {
-        File.Move(partPath, _task.FinalPath, overwrite: true);
+        if (audioPartPath is null)
+        {
+            File.Move(partPath, _task.FinalPath, overwrite: true);
+        }
+        else
+        {
+            await FfmpegLocator.MuxAsync(ffmpeg!, partPath, audioPartPath, _task.FinalPath, ct)
+                .ConfigureAwait(false);
+            DeleteQuietly(partPath);
+            DeleteQuietly(audioPartPath);
+        }
 
         _task.SetState(DownloadState.Completed);
-        _task.MediaResumeIndex = _segmentTotal;
+        _task.MediaResumeIndex = _tracks.Sum(t => t.Total);
         Publish();
 
         _store.Delete(_task.Id);
-        await System.Threading.Tasks.Task.CompletedTask.ConfigureAwait(false);
     }
 
     private DownloadProgress Snapshot() => new()
     {
         Id = _task.Id,
         State = _task.State,
-        BytesDownloaded = _bytesWritten,
+        BytesDownloaded = _tracks.Sum(t => t.Bytes),
         TotalBytes = null, // playlist tidak menjanjikan ukuran total di muka
         BytesPerSecond = _speed.GetRate(),
-        CompletedSegments = _segmentsWritten,
-        TotalSegments = _segmentTotal,
+        CompletedSegments = _tracks.Sum(t => t.Written),
+        TotalSegments = _tracks.Sum(t => t.Total),
     };
 
     private void Publish() => _onProgress?.Invoke(Snapshot());
@@ -460,6 +571,9 @@ public sealed class MediaDownloadSession : IDownloadSession
             await _manifestGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
+                if (_tracks.Count > 1)
+                    _task.MediaTracksState = BuildTracksState();
+
                 await _store.SaveAsync(_task.ToManifest(), ct).ConfigureAwait(false);
             }
             finally

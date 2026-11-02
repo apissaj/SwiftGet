@@ -18,6 +18,12 @@ public sealed class SchedulerOptions
     /// melebihi angka ini meskipun ada beberapa unduhan aktif dari host itu.
     /// </summary>
     public int MaxConnectionsPerHost { get; init; } = 12;
+
+    /// <summary>
+    /// Lokasi ffmpeg.exe untuk menggabungkan jalur video dan audio DASH.
+    /// Kosong berarti dicari di folder aplikasi lalu PATH.
+    /// </summary>
+    public string? FfmpegPath { get; init; }
 }
 
 /// <summary>

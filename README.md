@@ -26,8 +26,9 @@ selain .NET sendiri.
   `Content-MD5`, `X-Checksum-*`, dan `X-Goog-Hash` (SHA-256/384/512/1, MD5).
   Berkas yang tidak cocok dihapus, bukan dibiarkan.
 - Unduhan HLS/DASH (`.m3u8`/`.mpd`): playlist diurai, kualitas terbaik
-  dipilih, segmen diunduh paralel lalu digabung berurutan; playlist
-  terenkripsi ditolak dengan pesan yang jelas.
+  dipilih, segmen diunduh paralel lalu digabung berurutan; DASH yang
+  memisahkan video dan audio digabung lewat ffmpeg; playlist terenkripsi
+  ditolak dengan pesan yang jelas.
 - Fallback satu aliran untuk server yang tidak mendukung `Range`.
 
 **Aplikasi**

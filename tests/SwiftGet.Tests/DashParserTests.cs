@@ -7,7 +7,8 @@ namespace SwiftGet.Tests;
 /// <summary>
 /// Uji pengurai MPD DASH tanpa I/O: SegmentList, SegmentTemplate ber-$Number$,
 /// SegmentTimeline eksplisit, pengisi nol dan token template lainnya,
-/// pilihan Representation, penolakan multi-AdaptationSet, dan galat XML.
+/// pilihan Representation, pemisahan jalur video/audio lintas AdaptationSet,
+/// dan galat XML.
 /// </summary>
 public class DashParserTests
 {
@@ -154,13 +155,18 @@ public class DashParserTests
     }
 
     [Fact]
-    public void Dua_AdaptationSet_Menghasilkan_UnsupportedMedia()
+    public void Dua_AdaptationSet_Menghasilkan_Dua_Jalur_Video_Lalu_Audio()
     {
-        DownloadException ex = Assert.Throws<DownloadException>(() => DashPlaylistParser.Parse(BungkusMpd(
+        // Video dan audio di AdaptationSet terpisah bukan lagi penolakan:
+        // keduanya menjadi jalur unduhan terpisah yang nanti digabung ffmpeg.
+        List<MediaPlaylist> jalur = DashPlaylistParser.ParseTracks(BungkusMpd(
             """
             <AdaptationSet mimeType="video/mp4">
-              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
-                <BaseURL>video.mp4</BaseURL>
+              <Representation id="v-kecil" bandwidth="900000" mimeType="video/mp4">
+                <BaseURL>video-kecil.mp4</BaseURL>
+              </Representation>
+              <Representation id="v-besar" bandwidth="2000000" mimeType="video/mp4">
+                <BaseURL>video-besar.mp4</BaseURL>
               </Representation>
             </AdaptationSet>
             <AdaptationSet mimeType="audio/mp4">
@@ -168,10 +174,106 @@ public class DashParserTests
                 <BaseURL>audio.mp4</BaseURL>
               </Representation>
             </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(2, jalur.Count);
+
+        // Jalur pertama video dengan bandwidth terbesar, jalur kedua audio.
+        Assert.Equal("http://cdn.test/dash/video-besar.mp4", jalur[0].Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/audio.mp4", jalur[1].Segments[0].Url.ToString());
+        Assert.All(jalur, j => Assert.Single(j.Segments));
+    }
+
+    [Fact]
+    public void ParseTracks_VideoAudio_Terpisah_Menghasilkan_Dua_Jalur_UrutanVideoDulu()
+    {
+        // Urutan AdaptationSet di dokumen sengaja audio dan teks lebih dulu:
+        // urutan hasil ditentukan jenis (video, audio), bukan posisi dokumen,
+        // dan AdaptationSet teks/subtitle diabaikan sama sekali.
+        List<MediaPlaylist> jalur = DashPlaylistParser.ParseTracks(BungkusMpd(
+            """
+            <AdaptationSet mimeType="audio/mp4">
+              <Representation id="a-kecil" bandwidth="96000" mimeType="audio/mp4">
+                <SegmentList timescale="1" duration="4">
+                  <Initialization sourceURL="init-a-96.m4s"/>
+                  <SegmentURL media="a-96-1.m4s"/>
+                </SegmentList>
+              </Representation>
+              <Representation id="a-besar" bandwidth="192000" mimeType="audio/mp4">
+                <SegmentList timescale="1" duration="4">
+                  <Initialization sourceURL="init-a-192.m4s"/>
+                  <SegmentURL media="a-192-1.m4s"/>
+                </SegmentList>
+              </Representation>
+            </AdaptationSet>
+            <AdaptationSet mimeType="text/vtt">
+              <Representation id="s" bandwidth="16000" mimeType="text/vtt">
+                <BaseURL>subtitle.vtt</BaseURL>
+              </Representation>
+            </AdaptationSet>
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v-720" bandwidth="1500000" mimeType="video/mp4">
+                <SegmentList timescale="1" duration="4">
+                  <Initialization sourceURL="init-720.m4s"/>
+                  <SegmentURL media="720-1.m4s"/>
+                </SegmentList>
+              </Representation>
+              <Representation id="v-1080" bandwidth="3000000" mimeType="video/mp4">
+                <SegmentList timescale="1" duration="4">
+                  <Initialization sourceURL="init-1080.m4s"/>
+                  <SegmentURL media="1080-1.m4s"/>
+                </SegmentList>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(2, jalur.Count);
+
+        // Jalur video dulu, memakai Representation bandwidth terbesarnya.
+        Assert.Equal(
+            new[] { "http://cdn.test/dash/init-1080.m4s", "http://cdn.test/dash/1080-1.m4s" },
+            jalur[0].Segments.Select(s => s.Url.ToString()).ToArray());
+
+        // Jalur audio menyusul, juga bandwidth terbesarnya.
+        Assert.Equal(
+            new[] { "http://cdn.test/dash/init-a-192.m4s", "http://cdn.test/dash/a-192-1.m4s" },
+            jalur[1].Segments.Select(s => s.Url.ToString()).ToArray());
+
+        // Subtitle tidak bocor sebagai jalur ketiga.
+        Assert.DoesNotContain(jalur.SelectMany(j => j.Segments),
+            s => s.Url.ToString().Contains(".vtt", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ParseTracks_Tanpa_Video_Atau_Audio_Menghasilkan_CorruptResponse()
+    {
+        DownloadException ex = Assert.Throws<DownloadException>(() => DashPlaylistParser.ParseTracks(BungkusMpd(
+            """
+            <AdaptationSet mimeType="text/vtt">
+              <Representation id="s" bandwidth="16000" mimeType="text/vtt">
+                <BaseURL>subtitle.vtt</BaseURL>
+              </Representation>
+            </AdaptationSet>
             """), BaseUri));
 
-        Assert.Equal(DownloadErrorKind.UnsupportedMedia, ex.Kind);
-        Assert.Contains("AdaptationSet", ex.Message);
+        Assert.Equal(DownloadErrorKind.CorruptResponse, ex.Kind);
+        Assert.Contains("video atau audio", ex.Message);
+    }
+
+    [Fact]
+    public void ParseTracks_Tunggal_Menghasilkan_Satu_Jalur()
+    {
+        List<MediaPlaylist> jalur = DashPlaylistParser.ParseTracks(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <BaseURL>film-utuh.mp4</BaseURL>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Single(jalur);
+        Assert.Equal("http://cdn.test/dash/film-utuh.mp4", jalur[0].Segments[0].Url.ToString());
     }
 
     [Fact]

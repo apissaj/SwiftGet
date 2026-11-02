@@ -134,7 +134,8 @@ public sealed class DownloadManager : IAsyncDisposable
 
         if (Media.MediaPlaylistDetector.IsPlaylistUrl(task.Url))
             return new Media.MediaDownloadSession(task, _http, _budget, _store,
-                _options.MaxConnectionsPerDownload, retry: null, onProgress);
+                _options.MaxConnectionsPerDownload, retry: null, onProgress,
+                ffmpegPath: _options.FfmpegPath);
 
         return new DownloadSession(task, _http, _budget, _store,
             _options.MaxConnectionsPerDownload, retry: null, onProgress);

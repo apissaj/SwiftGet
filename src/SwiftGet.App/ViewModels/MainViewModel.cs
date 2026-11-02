@@ -35,6 +35,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             MaxConcurrentDownloads = settings.MaxConcurrentDownloads,
             MaxConnectionsPerDownload = settings.MaxConnectionsPerDownload,
             MaxConnectionsPerHost = settings.MaxConnectionsPerHost,
+            FfmpegPath = string.IsNullOrWhiteSpace(settings.FfmpegPath) ? null : settings.FfmpegPath,
         };
 
         Manager = new DownloadManager(AppSettings.StateDirectory, options);

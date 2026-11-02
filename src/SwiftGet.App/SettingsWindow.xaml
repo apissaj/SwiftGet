@@ -68,6 +68,12 @@
                                 TickFrequency="1" IsSnapToTickEnabled="True"
                                 ValueChanged="PerHost_Changed" Margin="0,4,0,10" />
                         <TextBlock x:Name="PerHostLabel" Style="{StaticResource Caption}" />
+
+                        <TextBlock Text="ffmpeg (untuk menggabungkan DASH video+audio)"
+                                   Style="{StaticResource Body}" Margin="0,12,0,0" />
+                        <TextBox x:Name="FfmpegBox" Style="{StaticResource UrlTextBox}" Margin="0,4,0,0" />
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Text="Kosongkan untuk mencari di folder aplikasi lalu PATH. Tanpa ffmpeg, unduhan DASH video+audio ditolak lebih awal." />
                     </StackPanel>
                 </Border>
 

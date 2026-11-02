@@ -29,6 +29,8 @@ public partial class SettingsWindow : Window
         SegmentsSlider.Value = settings.MaxConnectionsPerDownload;
         PerHostSlider.Value = settings.MaxConnectionsPerHost;
 
+        FfmpegBox.Text = settings.FfmpegPath;
+
         WatchClipboardBox.IsChecked = settings.WatchClipboard;
         AutoStartBox.IsChecked = settings.StartDownloadsAutomatically;
         MinimizeToTrayBox.IsChecked = settings.MinimizeToTray;
@@ -76,6 +78,8 @@ public partial class SettingsWindow : Window
         _settings.MaxConcurrentDownloads = (int)ConcurrentSlider.Value;
         _settings.MaxConnectionsPerDownload = (int)SegmentsSlider.Value;
         _settings.MaxConnectionsPerHost = (int)PerHostSlider.Value;
+
+        _settings.FfmpegPath = FfmpegBox.Text.Trim();
 
         _settings.WatchClipboard = WatchClipboardBox.IsChecked == true;
         _settings.StartDownloadsAutomatically = AutoStartBox.IsChecked == true;

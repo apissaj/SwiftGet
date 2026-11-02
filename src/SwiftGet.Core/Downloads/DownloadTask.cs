@@ -66,6 +66,12 @@ public sealed class DownloadTask
     /// </summary>
     public string? Referer { get; internal set; }
 
+    /// <summary>
+    /// Keadaan resume unduhan multi-jalur DASH:
+    /// <c>resume:jumlah,resume:jumlah</c> untuk jalur video lalu audio.
+    /// </summary>
+    public string? MediaTracksState { get; internal set; }
+
     public DownloadState State
     {
         get { lock (_gate) return _state; }
@@ -259,6 +265,7 @@ public sealed class DownloadTask
                 MediaResumeIndex = MediaResumeIndex,
                 MediaSegmentCount = MediaSegmentCount,
                 Referer = Referer,
+                MediaTracksState = MediaTracksState,
                 State = _state,
                 LastError = _lastError,
                 Segments = _segments.Select(s => new DownloadManifest.SegmentRecord
@@ -292,6 +299,7 @@ public sealed class DownloadTask
             MediaResumeIndex = manifest.MediaResumeIndex,
             MediaSegmentCount = manifest.MediaSegmentCount,
             Referer = manifest.Referer,
+            MediaTracksState = manifest.MediaTracksState,
         };
 
         task._lastError = manifest.LastError;

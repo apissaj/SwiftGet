@@ -34,6 +34,12 @@ public sealed class AppSettings
     public int LocalEndpointPort { get; set; } = 49160;
 
     /// <summary>
+    /// Lokasi ffmpeg untuk menggabungkan jalur DASH. Kosong berarti dicari
+    /// di folder aplikasi lalu PATH.
+    /// </summary>
+    public string FfmpegPath { get; set; } = "";
+
+    /// <summary>
     /// Tema terakhir yang dipilih pengguna. Null berarti ikuti tema Windows
     /// pada saat aplikasi dijalankan.
     /// </summary>

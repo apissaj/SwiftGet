@@ -411,11 +411,11 @@ adalah keadaan setelah Rilis 2; celah lama (tema, perangkap fokus,
 reduce-motion, penyaring, urut kolom) sudah tertutup pada fase A sampai D —
 rinciannya di `docs/delivery-gate-rilis-2.md`.
 
-- **DASH dengan beberapa AdaptationSet** (video dan audio terpisah) ditolak
-  dengan pesan; menggabungkannya butuh muxing yang belum dikerjakan.
-- **SegmentTemplate DASH** dengan penomoran berformat (`$Number%05d$`) dan
-  `SegmentTimeline` belum diurai; hanya `$Number$` polos dengan
-  `mediaPresentationDuration`.
+- **Penggabungan DASH video+audio bergantung ffmpeg** yang tidak dibundel:
+  dicari di lokasi yang diatur pengguna, folder aplikasi, lalu PATH. Tanpa
+  ffmpeg, unduhan multi-jalur ditolak lebih awal dengan pesan yang
+  menjelaskan ketiganya. Encode ulang dan muxing tanpa ffmpeg tidak
+  dikerjakan.
 - **HLS live** (playlist yang bertambah) tidak didukung; unduhan menganggap
   playlist VOD yang jumlah segmennya tetap.
 - **Bookmarklet mengirim URL halaman**, bukan mendeteksi tautan media di
