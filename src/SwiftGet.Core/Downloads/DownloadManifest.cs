@@ -49,6 +49,9 @@ public sealed class DownloadManifest
     /// <summary>Jumlah segmen saat rencana dibuat; berubah berarti konten berubah.</summary>
     public int? MediaSegmentCount { get; set; }
 
+    /// <summary>Halaman asal tautan (bookmarklet), dikirim ulang saat resume.</summary>
+    public string? Referer { get; set; }
+
     public string? ContentType { get; set; }
 
     public DownloadState State { get; set; } = DownloadState.Queued;

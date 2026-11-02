@@ -71,9 +71,10 @@ public sealed class DownloadManager : IAsyncDisposable
 
     /// <summary>
     /// Tambahkan unduhan baru. Nama file akhir ditentukan dari <c>Content-Disposition</c>
-    /// bila tersedia, jika tidak dari URL.
+    /// bila tersedia, jika tidak dari URL. Referer (halaman asal dari bookmarklet)
+    /// dikirim ulang pada setiap permintaan, termasuk saat resume.
     /// </summary>
-    public DownloadTask Add(string url, string targetDirectory, string? fileName = null)
+    public DownloadTask Add(string url, string targetDirectory, string? fileName = null, string? referer = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
             throw new DownloadException(DownloadErrorKind.InvalidUrl, $"URL tidak valid: {url}");
@@ -83,6 +84,7 @@ public sealed class DownloadManager : IAsyncDisposable
                 $"Hanya http/https yang didukung, bukan '{uri.Scheme}'.");
 
         var task = new DownloadTask(Guid.NewGuid().ToString("N"), uri, targetDirectory, fileName);
+        if (!string.IsNullOrWhiteSpace(referer)) task.Referer = referer;
         _tasks[task.Id] = task;
         return task;
     }

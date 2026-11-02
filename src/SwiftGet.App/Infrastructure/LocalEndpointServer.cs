@@ -25,13 +25,13 @@ public sealed class LocalEndpointServer : IDisposable
     private const int MaxBodyBytes = 16 * 1024;
 
     private readonly int _port;
-    private readonly Func<string, Task<AddResult>> _add;
+    private readonly Func<AddRequest, Task<AddResult>> _add;
     private CancellationTokenSource _cts = new();
     private HttpListener? _listener;
     private Task? _acceptLoop;
     private bool _disposed;
 
-    public LocalEndpointServer(int port, Func<string, Task<AddResult>> add)
+    public LocalEndpointServer(int port, Func<AddRequest, Task<AddResult>> add)
     {
         if (port is < 1024 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(port), "Port di luar rentang aman.");
@@ -144,19 +144,23 @@ public sealed class LocalEndpointServer : IDisposable
     private async Task HandleAddAsync(HttpListenerContext ctx, HttpListenerResponse response, CancellationToken ct)
     {
         string? url;
+        string? referer;
 
         switch (ctx.Request.HttpMethod)
         {
             case "GET":
                 url = ctx.Request.QueryString["url"];
+                referer = ctx.Request.QueryString["referer"];
                 break;
             case "POST":
                 PostBody body = await ReadPostUrlAsync(ctx.Request, response).ConfigureAwait(false);
                 if (body.Handled) return; // 413 sudah terjawab; jangan tulis ulang.
                 url = body.Url;
+                referer = body.Referer;
                 break;
             default:
                 url = null;
+                referer = null;
                 break;
         }
 
@@ -182,16 +186,32 @@ public sealed class LocalEndpointServer : IDisposable
             return;
         }
 
-        AddResult result = await _add(parsed.ToString()).ConfigureAwait(false);
+        // Referer opsional dari bookmarklet: halaman tempat tautan ditemukan,
+        // dipakai server yang mensyaratkan asal permintaan.
+        Uri? refererUri = null;
+        if (!string.IsNullOrWhiteSpace(referer))
+        {
+            if (referer.Length > MaxUrlLength ||
+                !Uri.TryCreate(referer, UriKind.Absolute, out refererUri) ||
+                refererUri.Scheme is not ("http" or "https"))
+            {
+                await WriteAsync(response, 400, "Referer harus URL http atau https", "text/plain; charset=utf-8")
+                    .ConfigureAwait(false);
+                return;
+            }
+        }
+
+        AddResult result = await _add(new AddRequest(parsed.ToString(), refererUri?.ToString()))
+            .ConfigureAwait(false);
         int code = result.Ok ? 200 : 400;
         await WriteAsync(response, code, result.Message, "text/plain; charset=utf-8")
             .ConfigureAwait(false);
     }
 
-    /// <summary>Baca body POST berformat <c>{"url": "..."}</c>.
+    /// <summary>Baca body POST berformat <c>{"url": "...", "referer": "..."}</c>.
     /// <see cref="PostBody.Handled"/> true berarti respons sudah ditulis di
     /// sini (413) dan pemanggil tidak menulis lagi.</summary>
-    private sealed record PostBody(string? Url, bool Handled);
+    private sealed record PostBody(string? Url, string? Referer, bool Handled);
 
     private static async Task<PostBody> ReadPostUrlAsync(HttpListenerRequest request, HttpListenerResponse response)
     {
@@ -200,7 +220,7 @@ public sealed class LocalEndpointServer : IDisposable
         {
             await WriteAsync(response, 413, "Isi terlalu besar", "text/plain; charset=utf-8")
                 .ConfigureAwait(false);
-            return new PostBody(null, Handled: true);
+            return new PostBody(null, null, Handled: true);
         }
 
         try
@@ -212,11 +232,14 @@ public sealed class LocalEndpointServer : IDisposable
             string? url = doc.RootElement.TryGetProperty("url", out JsonElement urlElement)
                 ? urlElement.GetString()
                 : null;
-            return new PostBody(url, Handled: false);
+            string? referer = doc.RootElement.TryGetProperty("referer", out JsonElement refererElement)
+                ? refererElement.GetString()
+                : null;
+            return new PostBody(url, referer, Handled: false);
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
-            return new PostBody(null, Handled: false);
+            return new PostBody(null, null, Handled: false);
         }
     }
 
@@ -229,24 +252,56 @@ public sealed class LocalEndpointServer : IDisposable
         await response.OutputStream.WriteAsync(bytes).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Halaman penerima bookmarklet: satu tautan yang ditarik ke bookmark bar.
-    /// Halaman ini juga konfirmasi hidup bahwa endpoint berjalan.
-    /// </summary>
+    /// <summary>Halaman penerima bookmarklet: satu tautan yang ditarik ke
+    /// bookmark bar. Bookmarklet memindai tautan berkas media dan elemen
+    /// video/audio di halaman aktif — bila ada beberapa, pengguna memilih dari
+    /// daftar; bila tidak ada, URL halaman dikirim sebagai cadangan. Referer
+    /// halaman ikut dikirim untuk server yang mensyaratkannya.</summary>
     private string BookmarkletPage()
     {
-        string script = $"javascript:location.href='{BaseUrl}add?url='+encodeURIComponent(location.href)";
+        // Skrip ditulis sebagai raw string tanpa interpolasi: JavaScript penuh
+        // kurung kurawal, dan menghindarinya butuh pelolosan berlapis yang
+        // mudah salah. URL endpoint dimasukkan lewat token.
+        const string scriptTemplate = """
+            javascript:(function(){
+            var ADD='__ADD__';var EXT=/\.(mp4|m4v|mkv|webm|mov|avi|flv|ts|mp3|m4a|wav|flac|ogg|opus|zip|rar|7z|tar|gz|xz|iso|pdf|docx?|xlsx?|pptx?|epub|exe|msi|msix|apk|dmg)([?#]|$)/i;var found=[];var seen={};
+            function push(u){try{u=new URL(u,location.href).href;}catch(e){return;}
+            if(seen[u])return;if(u.indexOf('__BASE__')===0)return;seen[u]=1;found.push(u);}
+            document.querySelectorAll('a[href],video[src],video source[src],audio[src],audio source[src],embed[src],object[data]').forEach(function(el){var u=el.href||el.src||el.data;if(u)push(u);});
+            document.querySelectorAll('video,audio').forEach(function(v){try{var c=v.currentSrc||v.src;if(c)push(c);}catch(e){}});
+            function send(u){location.href=ADD+'?url='+encodeURIComponent(u)+'&referer='+encodeURIComponent(location.href);}
+            if(found.length===1){send(found[0]);return;}
+            var d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2147483647;font:14px/1.5 system-ui,sans-serif;';
+            var b=document.createElement('div');b.style.cssText='position:absolute;top:8%;left:50%;transform:translateX(-50%);background:#fff;color:#1a1a1a;border-radius:10px;padding:14px 18px;width:min(640px,92vw);max-height:74vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.4);';
+            var h=document.createElement('div');h.textContent='Kirim ke SwiftGet — '+found.length+' kandidat di '+location.hostname;h.style.cssText='font-weight:600;margin-bottom:8px;';b.appendChild(h);
+            if(found.length===0){var e=document.createElement('div');e.textContent='Tidak ada tautan berkas media di halaman ini. URL halaman dikirim sebagai cadangan.';e.style.cssText='margin-bottom:8px;';b.appendChild(e);}
+            found.forEach(function(u){var a=document.createElement('a');a.href='#';a.textContent=u;a.style.cssText='display:block;padding:6px 2px;word-break:break-all;color:#0a7a5c;text-decoration:none;border-top:1px solid #eee;';a.onclick=function(ev){ev.preventDefault();document.body.removeChild(d);send(u);};b.appendChild(a);});
+            if(found.length===0){var s=document.createElement('a');s.href='#';s.textContent='Kirim URL halaman ini';s.style.cssText='display:inline-block;margin-top:8px;padding:6px 12px;border:1px solid #bbb;border-radius:6px;color:#1a1a1a;text-decoration:none;';s.onclick=function(ev){ev.preventDefault();document.body.removeChild(d);send(location.href);};b.appendChild(s);}
+            var x=document.createElement('a');x.href='#';x.textContent='Tutup';x.style.cssText='display:inline-block;margin:10px 0 0;padding:6px 12px;border:1px solid #bbb;border-radius:6px;color:#1a1a1a;text-decoration:none;';x.onclick=function(ev){ev.preventDefault();document.body.removeChild(d);};b.appendChild(x);
+            d.appendChild(b);document.body.appendChild(d);})()
+            """;
+
+        string script = scriptTemplate
+            .Replace("__ADD__", $"{BaseUrl}add")
+            .Replace("__BASE__", BaseUrl);
+
+        // Skrip sengaja hanya memakai kutip tunggal dan tanpa < > & " supaya
+        // aman langsung masuk atribut href tanpa HtmlEncode — encode justru
+        // mengubah kutip tunggal menjadi &#39; dan merusak skrip saat ditarik
+        // ke bookmark bar di sebagian browser.
+        string encoded = script;
+
         return $"""
             <!doctype html>
             <html lang="id">
             <head><meta charset="utf-8"><title>SwiftGet</title></head>
             <body style="font-family: system-ui, sans-serif; max-width: 34rem; margin: 3rem auto; line-height: 1.6;">
               <h1 style="font-size: 1.4rem;">SwiftGet siap menerima unduhan</h1>
-              <p>Tarik tombol ini ke bookmark bar browser Anda, lalu klik saat ingin mengunduh berkas di halaman mana pun:</p>
-              <p><a href="{System.Net.WebUtility.HtmlEncode(script)}"
+              <p>Tarik tombol ini ke bookmark bar browser Anda, lalu klik saat berada di halaman yang memuat berkas media. Bookmarklet memindai tautan berkas dan elemen video/audio di halaman, lalu Anda memilih yang mau diunduh:</p>
+              <p><a href="{encoded}"
                     style="display: inline-block; padding: .5rem 1rem; border: 1px solid #999; border-radius: 6px; text-decoration: none;">
                     Kirim ke SwiftGet</a></p>
-              <p style="color: #666;">Bookmarklet membuka halaman kecil ini sebagai konfirmasi. URL aktif hanya di komputer ini.</p>
+              <p style="color: #666;">Referer halaman ikut dikirim. Endpoint hanya aktif di komputer ini. Cookie privat browser tidak bisa dibaca bookmarklet — untuk berkas yang mewajibkan login, unduhan mungkin ditolak server.</p>
             </body>
             </html>
             """;
@@ -254,4 +309,7 @@ public sealed class LocalEndpointServer : IDisposable
 
     /// <summary>Hasil penerimaan URL: ok dan nama berkas/pesan untuk browser.</summary>
     public sealed record AddResult(bool Ok, string Message);
+
+    /// <summary>URL yang diterima endpoint, beserta referer halaman asalnya bila ada.</summary>
+    public sealed record AddRequest(string Url, string? Referer);
 }

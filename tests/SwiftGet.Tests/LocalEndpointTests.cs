@@ -16,10 +16,10 @@ namespace SwiftGet.Tests;
 public sealed class LocalEndpointTests : IDisposable
 {
     private LocalEndpointServer? _server;
-    private readonly List<string> _urlKeCallback = new();
+    private readonly List<LocalEndpointServer.AddRequest> _requestKeCallback = new();
 
-    /// <summary>Diisi test yang butuh menunggu URL persis seperti sampai ke callback.</summary>
-    private TaskCompletionSource<string>? _urlTerakhir;
+    /// <summary>Diisi test yang butuh menunggu request persis seperti sampai ke callback.</summary>
+    private TaskCompletionSource<LocalEndpointServer.AddRequest>? _requestTerakhir;
 
     public void Dispose() => _server?.Dispose();
 
@@ -46,7 +46,7 @@ public sealed class LocalEndpointTests : IDisposable
     /// keburu direbut proses lain sebelum HttpListener memakainya, jadi bila
     /// Start kena AddressInUse, dicoba lagi dengan port lain (maks 5 kali).
     /// </summary>
-    private LocalEndpointServer MulaiServer(Func<string, Task<LocalEndpointServer.AddResult>>? add = null)
+    private LocalEndpointServer MulaiServer(Func<LocalEndpointServer.AddRequest, Task<LocalEndpointServer.AddResult>>? add = null)
     {
         add ??= CatatDanTerima;
         Exception? terakhir = null;
@@ -70,18 +70,22 @@ public sealed class LocalEndpointTests : IDisposable
         throw new InvalidOperationException("Lima kali gagal mendapat port bebas.", terakhir);
     }
 
-    private Task<LocalEndpointServer.AddResult> CatatDanTerima(string url)
+    private Task<LocalEndpointServer.AddResult> CatatDanTerima(LocalEndpointServer.AddRequest request)
     {
-        lock (_urlKeCallback) _urlKeCallback.Add(url);
-        _urlTerakhir?.TrySetResult(url);
-        return Task.FromResult(new LocalEndpointServer.AddResult(true, $"Diterima: {url}"));
+        lock (_requestKeCallback) _requestKeCallback.Add(request);
+        _requestTerakhir?.TrySetResult(request);
+        return Task.FromResult(new LocalEndpointServer.AddResult(true, $"Diterima: {request.Url}"));
     }
 
-    private Task<LocalEndpointServer.AddResult> TolakDenganPesan(string url) =>
+    private Task<LocalEndpointServer.AddResult> TolakDenganPesan(LocalEndpointServer.AddRequest request) =>
         Task.FromResult(new LocalEndpointServer.AddResult(false, "URL tidak valid: host tidak bisa diurai"));
 
-    private static string UrlAdd(string baseUrl, string url) =>
-        $"{baseUrl}add?url={Uri.EscapeDataString(url)}";
+    private static string UrlAdd(string baseUrl, string url, string? referer = null)
+    {
+        string hasil = $"{baseUrl}add?url={Uri.EscapeDataString(url)}";
+        if (referer is not null) hasil += $"&referer={Uri.EscapeDataString(referer)}";
+        return hasil;
+    }
 
     // ---- Halaman bookmarklet ----
 
@@ -98,7 +102,12 @@ public sealed class LocalEndpointTests : IDisposable
         Assert.Contains("text/html", resp.Content.Headers.ContentType?.ToString());
         string body = await resp.Content.ReadAsStringAsync();
         Assert.Contains("SwiftGet siap menerima unduhan", body);
-        Assert.Contains($"http://127.0.0.1:{port}/add?url=", body);
+        // URL endpoint masuk ke variabel ADD skrip; referer dikirim terpisah.
+        Assert.Contains($"var ADD='http://127.0.0.1:{port}/add';", body);
+        Assert.Contains("referer=", body);
+        // Skrip deteksi: dialog pilihan kandidat dan pesan cadangan tanpa kandidat.
+        Assert.Contains("Kirim ke SwiftGet — ", body);
+        Assert.Contains("Tidak ada tautan berkas media", body);
     }
 
     // ---- GET /add ----
@@ -106,16 +115,16 @@ public sealed class LocalEndpointTests : IDisposable
     [Fact]
     public async Task Add_GetValid_MeneruskanUrlTernormalisasiKeCallback()
     {
-        _urlTerakhir = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = MulaiServer();
 
         using var klien = KlienBaru();
         using var resp = await klien.GetAsync(UrlAdd(server.BaseUrl, "http://contoh/file.zip"));
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        string diterima = await _urlTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal("http://contoh/file.zip", diterima);
-        Assert.Equal($"Diterima: {diterima}", await resp.Content.ReadAsStringAsync());
+        var diterima = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("http://contoh/file.zip", diterima.Url);
+        Assert.Equal($"Diterima: {diterima.Url}", await resp.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -140,7 +149,7 @@ public sealed class LocalEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.Equal("Parameter url kosong", await resp.Content.ReadAsStringAsync());
-        lock (_urlKeCallback) Assert.Empty(_urlKeCallback);
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
     }
 
     [Theory]
@@ -155,7 +164,7 @@ public sealed class LocalEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.Equal("URL harus http atau https", await resp.Content.ReadAsStringAsync());
-        lock (_urlKeCallback) Assert.Empty(_urlKeCallback);
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
     }
 
     [Fact]
@@ -168,7 +177,88 @@ public sealed class LocalEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.Equal("URL terlalu panjang", await resp.Content.ReadAsStringAsync());
-        lock (_urlKeCallback) Assert.Empty(_urlKeCallback);
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
+    }
+
+    // ---- Referer pada /add ----
+
+    [Fact]
+    public async Task Add_Get_DenganReferer_CallbackMenerimaUrlDanReferer()
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(
+            UrlAdd(server.BaseUrl, "http://contoh/a.zip", "https://halaman/asal"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var request = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("http://contoh/a.zip", request.Url);
+        Assert.Equal("https://halaman/asal", request.Referer);
+    }
+
+    [Fact]
+    public async Task Add_Get_TanpaReferer_RefererCallbackNull()
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(UrlAdd(server.BaseUrl, "http://contoh/a.zip"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var request = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("http://contoh/a.zip", request.Url);
+        Assert.Null(request.Referer);
+    }
+
+    [Fact]
+    public async Task Add_PostReferer_DiteruskanKeCallback()
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var isi = new StringContent(
+            """{"url":"https://contoh/a.zip","referer":"https://halaman/asal"}""",
+            Encoding.UTF8, "application/json");
+        using var resp = await klien.PostAsync(server.BaseUrl + "add", isi);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var request = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("https://contoh/a.zip", request.Url);
+        Assert.Equal("https://halaman/asal", request.Referer);
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("bukan url")]
+    public async Task Add_RefererBukanHttp_Ditolak400(string referer)
+    {
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(
+            UrlAdd(server.BaseUrl, "https://contoh/a.zip", referer));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal("Referer harus URL http atau https", await resp.Content.ReadAsStringAsync());
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
+    }
+
+    [Fact]
+    public async Task Add_RefererTerlaluPanjang_Ditolak400()
+    {
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(
+            UrlAdd(server.BaseUrl, "https://contoh/a.zip", new string('a', 2100)));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal("Referer harus URL http atau https", await resp.Content.ReadAsStringAsync());
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
     }
 
     // ---- POST /add ----
@@ -176,7 +266,7 @@ public sealed class LocalEndpointTests : IDisposable
     [Fact]
     public async Task Add_PostValid_MeneruskanUrlKeCallback()
     {
-        _urlTerakhir = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = MulaiServer();
 
         using var klien = KlienBaru();
@@ -184,8 +274,9 @@ public sealed class LocalEndpointTests : IDisposable
         using var resp = await klien.PostAsync(server.BaseUrl + "add", isi);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        string diterima = await _urlTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal("https://contoh/a.zip", diterima);
+        var diterima = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("https://contoh/a.zip", diterima.Url);
+        Assert.Null(diterima.Referer);
     }
 
     [Fact]

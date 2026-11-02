@@ -97,7 +97,7 @@ public sealed class DownloadSession : IDownloadSession
                 _task.SetState(DownloadState.Probing);
                 PublishProgress();
 
-                ProbeResult probe = await _http.ProbeAsync(_task.Url, ct).ConfigureAwait(false);
+                ProbeResult probe = await _http.ProbeAsync(_task.Url, ct, referer: _task.Referer).ConfigureAwait(false);
 
                 ApplyProbe(probe);
 
@@ -190,7 +190,7 @@ public sealed class DownloadSession : IDownloadSession
         // Untuk unduhan yang belum pernah jalan, tidak ada validator tersimpan.
         if (_task.ETag is null && _task.LastModifiedRaw is null) return true;
 
-        ProbeResult probe = await _http.ProbeAsync(_task.Url, ct).ConfigureAwait(false);
+        ProbeResult probe = await _http.ProbeAsync(_task.Url, ct, referer: _task.Referer).ConfigureAwait(false);
 
         if (_task.TotalLength is not null && probe.ContentLength is not null &&
             _task.TotalLength != probe.ContentLength)
@@ -424,7 +424,7 @@ public sealed class DownloadSession : IDownloadSession
                 "Server tidak mendukung Range; segmen tambahan tidak bisa dijalankan.");
 
         using RangedResponse response = await _http
-            .GetRangeAsync(_task.Url, from, toExclusive - 1, ct)
+            .GetRangeAsync(_task.Url, from, toExclusive - 1, ct, _task.Referer)
             .ConfigureAwait(false);
 
         if (!response.RangeHonored && !_task.SupportsRanges)

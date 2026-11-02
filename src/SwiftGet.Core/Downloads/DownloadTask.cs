@@ -60,6 +60,12 @@ public sealed class DownloadTask
     /// jumlah segmennya dianggap beda konten dan unduhan mulai dari nol.</summary>
     public int? MediaSegmentCount { get; internal set; }
 
+    /// <summary>
+    /// Halaman asal tautan (dari bookmarklet). Server tertentu menolak
+    /// permintaan tanpa asal yang dikenal; resume memakai nilai yang sama.
+    /// </summary>
+    public string? Referer { get; internal set; }
+
     public DownloadState State
     {
         get { lock (_gate) return _state; }
@@ -252,6 +258,7 @@ public sealed class DownloadTask
                 IsMedia = IsMedia,
                 MediaResumeIndex = MediaResumeIndex,
                 MediaSegmentCount = MediaSegmentCount,
+                Referer = Referer,
                 State = _state,
                 LastError = _lastError,
                 Segments = _segments.Select(s => new DownloadManifest.SegmentRecord
@@ -284,6 +291,7 @@ public sealed class DownloadTask
             IsMedia = manifest.IsMedia,
             MediaResumeIndex = manifest.MediaResumeIndex,
             MediaSegmentCount = manifest.MediaSegmentCount,
+            Referer = manifest.Referer,
         };
 
         task._lastError = manifest.LastError;

@@ -229,13 +229,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// tidak bisa jalan; dan tidak menyentuh kotak URL karena pengguna tidak
     /// sedang mengetik di sana.
     /// </summary>
-    public async System.Threading.Tasks.Task<(bool Ok, string Message)> AddFromLocalEndpointAsync(string url)
+    public async System.Threading.Tasks.Task<(bool Ok, string Message)> AddFromLocalEndpointAsync(
+        LocalEndpointServer.AddRequest request)
     {
         try
         {
             Directory.CreateDirectory(_settings.DownloadDirectory);
 
-            DownloadTask task = Manager.Add(url, _settings.DownloadDirectory);
+            DownloadTask task = Manager.Add(request.Url, _settings.DownloadDirectory, referer: request.Referer);
             DownloadItemViewModel item = Downloads.Add(task);
             SelectedItem = item;
             RefreshCommandStates();

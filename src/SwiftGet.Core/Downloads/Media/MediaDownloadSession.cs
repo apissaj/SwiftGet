@@ -178,7 +178,7 @@ public sealed class MediaDownloadSession : IDownloadSession
     /// <summary>Ambil teks playlist dan uraikan sesuai bentuknya.</summary>
     private async Task<MediaPlaylist> FetchPlaylistAsync(Uri url, CancellationToken ct)
     {
-        using FullResponse response = await _http.GetAsync(url, ct).ConfigureAwait(false);
+        using FullResponse response = await _http.GetAsync(url, ct, _task.Referer).ConfigureAwait(false);
         string text = await ReadPlaylistTextAsync(response, ct).ConfigureAwait(false);
 
         string trimmed = text.TrimStart();
@@ -368,7 +368,7 @@ public sealed class MediaDownloadSession : IDownloadSession
                 await _budget.EnterConnectionAsync(host, ct).ConfigureAwait(false);
                 entered = true;
 
-                using FullResponse response = await _http.GetAsync(url, ct).ConfigureAwait(false);
+                using FullResponse response = await _http.GetAsync(url, ct, _task.Referer).ConfigureAwait(false);
                 long? expected = response.Response.Content.Headers.ContentLength;
 
                 byte[] data;

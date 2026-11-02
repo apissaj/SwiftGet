@@ -128,11 +128,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<LocalEndpointServer.AddResult> AddFromBrowserAsync(string url)
+    private async Task<LocalEndpointServer.AddResult> AddFromBrowserAsync(LocalEndpointServer.AddRequest request)
     {
         // Endpoint berjalan di thread pool; operasi daftar harus di thread UI.
         Task<(bool Ok, string Message)> op = await Dispatcher.InvokeAsync(
-            () => _viewModel.AddFromLocalEndpointAsync(url)).Task.ConfigureAwait(false);
+            () => _viewModel.AddFromLocalEndpointAsync(request)).Task.ConfigureAwait(false);
         var (ok, message) = await op.ConfigureAwait(false);
         return new LocalEndpointServer.AddResult(ok, message);
     }

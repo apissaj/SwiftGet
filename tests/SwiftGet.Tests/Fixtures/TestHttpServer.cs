@@ -111,6 +111,35 @@ public sealed class TestHttpServer : IAsyncDisposable
     /// </summary>
     public Dictionary<string, int> FailFirstPerPath { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Header Referer dari permintaan GET/HEAD terakhir; null bila permintaan
+    /// terakhir tidak membawanya. Semua permintaan ke server yang sama membawa
+    /// referer yang sama, jadi nilai ini cukup untuk membuktikan penerusan.
+    /// </summary>
+    public string? LastReferer { get; private set; }
+
+    /// <summary>
+    /// Header Referer terakhir per path (AbsolutePath). Dibutuhkan untuk
+    /// unduhan media yang mengambil segmen secara paralel: permintaan terakhir
+    /// global bisa berasal dari path mana pun, sedangkan assertion per path
+    /// tetap deterministik.
+    /// </summary>
+    public Dictionary<string, string?> LastRefererPerPath { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Catat header Referer permintaan GET/HEAD yang baru masuk.</summary>
+    private void CatatReferer(HttpListenerRequest req)
+    {
+        if (req.HttpMethod is not ("GET" or "HEAD")) return;
+
+        LastReferer = req.Headers["Referer"];
+        if (req.Url?.AbsolutePath is string path)
+        {
+            lock (LastRefererPerPath)
+                LastRefererPerPath[path] = LastReferer;
+        }
+    }
+
     private readonly Dictionary<string, int> _failSisaPerPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _getPerPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _routeGate = new();
@@ -213,6 +242,8 @@ public sealed class TestHttpServer : IAsyncDisposable
         {
             HttpListenerRequest req = ctx.Request;
             HttpListenerResponse res = ctx.Response;
+
+            CatatReferer(req);
 
             if (NotFound)
             {

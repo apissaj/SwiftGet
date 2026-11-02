@@ -624,6 +624,119 @@ public sealed class DownloaderIntegrationTests : IAsyncLifetime
                 $"Resume meminta ulang byte yang sudah tertulis: {r} (NextPosition saat pause {nextPosition})."));
         Assert.Contains(dataResume, r => r.From == nextPosition);
     }
+
+    // ---------- Referer: halaman asal dari bookmarklet ----------
+
+    [Fact]
+    public async Task Referer_Diteruskan_Ke_Server()
+    {
+        _server.Content = MakePayload(256 * 1024);
+        Directory.CreateDirectory(OutDir);
+
+        // Referer menunjuk server yang sama, jadi tidak ada redirect yang bisa
+        // mengaburkan permintaan mana yang membawa header ini.
+        string referer = _server.UrlFor("halaman-asal").ToString();
+
+        await using var manager = new DownloadManager(StateDir,
+            new SchedulerOptions { MaxConnectionsPerDownload = 4 });
+        DownloadTask task = manager.Add(_server.UrlFor("file.bin").ToString(), OutDir, referer: referer);
+        await manager.StartAsync(task.Id);
+
+        Assert.Equal(DownloadState.Completed, task.State);
+        Assert.Equal(referer, _server.LastReferer);
+        Assert.Equal(referer, _server.LastRefererPerPath["/file.bin"]);
+    }
+
+    [Fact]
+    public async Task Referer_Tersimpan_Dan_Dipulihkan_Di_Manifest()
+    {
+        Directory.CreateDirectory(OutDir);
+        await using var manager = new DownloadManager(StateDir);
+
+        DownloadTask denganReferer = manager.Add("https://contoh/a.zip", OutDir,
+            referer: "https://halaman/asal");
+        Assert.Equal("https://halaman/asal", denganReferer.Referer);
+
+        DownloadManifest manifest = denganReferer.ToManifest();
+        Assert.Equal("https://halaman/asal", manifest.Referer);
+
+        DownloadTask pulih = DownloadTask.FromManifest(manifest);
+        Assert.Equal("https://halaman/asal", pulih.Referer);
+
+        // Tanpa referer: tetap null di task, manifest, dan hasil pulih.
+        DownloadTask tanpaReferer = manager.Add("https://contoh/b.zip", OutDir);
+        Assert.Null(tanpaReferer.Referer);
+        Assert.Null(tanpaReferer.ToManifest().Referer);
+        Assert.Null(DownloadTask.FromManifest(tanpaReferer.ToManifest()).Referer);
+    }
+
+    [Fact]
+    public async Task Resume_Mengirim_Ulang_Referer()
+    {
+        _server.Content = MakePayload(2 * 1024 * 1024);
+        string referer = _server.UrlFor("halaman-asal").ToString();
+
+        string id = Guid.NewGuid().ToString("N");
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget();
+
+        // Tahap 1: rencanakan segmen lalu tandai separuh selesai, meniru
+        // unduhan bookmarklet yang berhenti di tengah jalan. Referer ikut
+        // dipersist agar resume mengirim asal yang sama.
+        var task = new DownloadTask(id, _server.UrlFor("partial-ref.bin"), OutDir, "partial-ref.bin");
+        Directory.CreateDirectory(OutDir);
+        task.Referer = referer; // setter internal, terlihat lewat InternalsVisibleTo
+
+        ProbeResult probe = await http.ProbeAsync(task.Url);
+        task.TotalLength = probe.ContentLength;
+        task.SupportsRanges = probe.CanSegment;
+        task.ETag = probe.ETag;
+
+        var segments = SegmentPlanner.Plan(probe.ContentLength!.Value, 4);
+        foreach (var s in segments)
+        {
+            typeof(Segment).GetProperty(nameof(Segment.BytesDone))!.SetValue(s, s.Length / 2);
+        }
+        task.SetSegments(segments);
+
+        string partPath = store.GetPartPath(id);
+        using (var part = PartFile.Open(partPath, probe.ContentLength.Value))
+        {
+            foreach (var s in segments)
+            {
+                int half = (int)(s.BytesDone);
+                await part.WriteAtAsync(s.Start, _server.Content.AsMemory((int)s.Start, half), default);
+            }
+        }
+
+        task.SetState(DownloadState.Paused);
+        await store.SaveAsync(task.ToManifest());
+
+        // Probe tahap 1 di atas sengaja tanpa referer, jadi snapshot ini harus null;
+        // nilai non-null setelahnya pasti berasal dari fase resume.
+        string? refererSebelumResume = _server.LastReferer;
+
+        // Tahap 2: pulihkan dari manifest dan lanjutkan.
+        DownloadManifest? manifest = await store.LoadAsync(id);
+        Assert.NotNull(manifest);
+        Assert.Equal(referer, manifest!.Referer);
+
+        DownloadTask restored = DownloadTask.FromManifest(manifest);
+        Assert.Equal(referer, restored.Referer);
+
+        await using var session = new DownloadSession(restored, http, budget, store, maxConnections: 4);
+        await session.RunAsync();
+
+        Assert.Equal(DownloadState.Completed, restored.State);
+
+        byte[] actual = await File.ReadAllBytesAsync(restored.FinalPath);
+        Assert.Equal(_server.Content, actual);
+
+        Assert.Null(refererSebelumResume);
+        Assert.Equal(referer, _server.LastReferer);
+        Assert.Equal(referer, _server.LastRefererPerPath["/partial-ref.bin"]);
+    }
 }
 
 

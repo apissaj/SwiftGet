@@ -306,4 +306,30 @@ public sealed class MediaDownloadTests : IAsyncLifetime
                 .OrderBy(n => n)
                 .ToArray());
     }
+
+    // ---------- 8. Referer halaman asal ----------
+
+    [Fact]
+    public async Task Referer_Diteruskan_Pada_Playlist_Dan_Segmen()
+    {
+        _server.RouteText("/video/index.m3u8", M3u8Media(["seg-1.ts", "seg-2.ts", "seg-3.ts"]));
+        byte[][] segmen = RouteSegmen("video", 3);
+
+        DownloadManager manager = BuatManager(maxConnectionsPerDownload: 2);
+        string referer = _server.UrlFor("halaman/video").ToString();
+        DownloadTask task = manager.Add(_server.UrlFor("video/index.m3u8").ToString(), OutDir, referer: referer);
+        await manager.StartAsync(task.Id);
+
+        Assert.Equal(DownloadState.Completed, task.State);
+        Assert.Equal(Gabung(segmen), await File.ReadAllBytesAsync(Path.Combine(OutDir, task.FileName)));
+
+        // Segmen diambil paralel, jadi assertion referer dilakukan per path,
+        // bukan pada permintaan terakhir global.
+        lock (_server.LastRefererPerPath)
+        {
+            Assert.Equal(referer, _server.LastRefererPerPath["/video/index.m3u8"]);
+            for (int i = 1; i <= 3; i++)
+                Assert.Equal(referer, _server.LastRefererPerPath[$"/video/seg-{i}.ts"]);
+        }
+    }
 }
