@@ -24,18 +24,23 @@ public sealed class LocalEndpointServer : IDisposable
     /// <summary>Batas isi POST supaya koneksi nakal tidak menguras memori.</summary>
     private const int MaxBodyBytes = 16 * 1024;
 
+    /// <summary>Batas header Cookie dari ekstensi; sesi browser lazimnya jauh di bawah ini.</summary>
+    private const int MaxCookieBytes = 8 * 1024;
+
     private readonly int _port;
+    private readonly string? _token;
     private readonly Func<AddRequest, Task<AddResult>> _add;
     private CancellationTokenSource _cts = new();
     private HttpListener? _listener;
     private Task? _acceptLoop;
     private bool _disposed;
 
-    public LocalEndpointServer(int port, Func<AddRequest, Task<AddResult>> add)
+    public LocalEndpointServer(int port, string? token, Func<AddRequest, Task<AddResult>> add)
     {
         if (port is < 1024 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(port), "Port di luar rentang aman.");
         _port = port;
+        _token = string.IsNullOrWhiteSpace(token) ? null : token;
         _add = add;
     }
 
@@ -145,23 +150,40 @@ public sealed class LocalEndpointServer : IDisposable
     {
         string? url;
         string? referer;
+        string? cookies;
+        string? token;
 
         switch (ctx.Request.HttpMethod)
         {
             case "GET":
                 url = ctx.Request.QueryString["url"];
                 referer = ctx.Request.QueryString["referer"];
+                cookies = ctx.Request.QueryString["cookies"];
+                token = ctx.Request.QueryString["token"];
                 break;
             case "POST":
                 PostBody body = await ReadPostUrlAsync(ctx.Request, response).ConfigureAwait(false);
                 if (body.Handled) return; // 413 sudah terjawab; jangan tulis ulang.
                 url = body.Url;
                 referer = body.Referer;
+                cookies = body.Cookies;
+                token = body.Token;
                 break;
             default:
                 url = null;
                 referer = null;
+                cookies = null;
+                token = null;
                 break;
+        }
+
+        if (_token is not null && token != _token)
+        {
+            // Token sesi mencegah halaman web mana pun POST ke endpoint;
+            // ekstensi dan bookmarklet memperolehnya dari halaman/pengaturan.
+            await WriteAsync(response, 401, "Token tidak valid", "text/plain; charset=utf-8")
+                .ConfigureAwait(false);
+            return;
         }
 
         if (string.IsNullOrWhiteSpace(url))
@@ -201,7 +223,15 @@ public sealed class LocalEndpointServer : IDisposable
             }
         }
 
-        AddResult result = await _add(new AddRequest(parsed.ToString(), refererUri?.ToString()))
+        if (!string.IsNullOrWhiteSpace(cookies) && cookies.Length > MaxCookieBytes)
+        {
+            await WriteAsync(response, 400, "Cookie terlalu besar", "text/plain; charset=utf-8")
+                .ConfigureAwait(false);
+            return;
+        }
+
+        AddResult result = await _add(new AddRequest(parsed.ToString(), refererUri?.ToString(),
+                string.IsNullOrWhiteSpace(cookies) ? null : cookies))
             .ConfigureAwait(false);
         int code = result.Ok ? 200 : 400;
         await WriteAsync(response, code, result.Message, "text/plain; charset=utf-8")
@@ -211,7 +241,7 @@ public sealed class LocalEndpointServer : IDisposable
     /// <summary>Baca body POST berformat <c>{"url": "...", "referer": "..."}</c>.
     /// <see cref="PostBody.Handled"/> true berarti respons sudah ditulis di
     /// sini (413) dan pemanggil tidak menulis lagi.</summary>
-    private sealed record PostBody(string? Url, string? Referer, bool Handled);
+    private sealed record PostBody(string? Url, string? Referer, string? Cookies, string? Token, bool Handled);
 
     private static async Task<PostBody> ReadPostUrlAsync(HttpListenerRequest request, HttpListenerResponse response)
     {
@@ -220,7 +250,7 @@ public sealed class LocalEndpointServer : IDisposable
         {
             await WriteAsync(response, 413, "Isi terlalu besar", "text/plain; charset=utf-8")
                 .ConfigureAwait(false);
-            return new PostBody(null, null, Handled: true);
+            return new PostBody(null, null, null, null, Handled: true);
         }
 
         try
@@ -235,11 +265,17 @@ public sealed class LocalEndpointServer : IDisposable
             string? referer = doc.RootElement.TryGetProperty("referer", out JsonElement refererElement)
                 ? refererElement.GetString()
                 : null;
-            return new PostBody(url, referer, Handled: false);
+            string? cookies = doc.RootElement.TryGetProperty("cookies", out JsonElement cookiesElement)
+                ? cookiesElement.GetString()
+                : null;
+            string? token = doc.RootElement.TryGetProperty("token", out JsonElement tokenElement)
+                ? tokenElement.GetString()
+                : null;
+            return new PostBody(url, referer, cookies, token, Handled: false);
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
-            return new PostBody(null, null, Handled: false);
+            return new PostBody(null, null, null, null, Handled: false);
         }
     }
 
@@ -269,7 +305,7 @@ public sealed class LocalEndpointServer : IDisposable
             if(seen[u])return;if(u.indexOf('__BASE__')===0)return;seen[u]=1;found.push(u);}
             document.querySelectorAll('a[href],video[src],video source[src],audio[src],audio source[src],embed[src],object[data]').forEach(function(el){var u=el.href||el.src||el.data;if(u)push(u);});
             document.querySelectorAll('video,audio').forEach(function(v){try{var c=v.currentSrc||v.src;if(c)push(c);}catch(e){}});
-            function send(u){location.href=ADD+'?url='+encodeURIComponent(u)+'&referer='+encodeURIComponent(location.href);}
+            function send(u){location.href=ADD+'?url='+encodeURIComponent(u)+'&referer='+encodeURIComponent(location.href)+'&token=__TOKEN__';}
             if(found.length===1){send(found[0]);return;}
             var d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2147483647;font:14px/1.5 system-ui,sans-serif;';
             var b=document.createElement('div');b.style.cssText='position:absolute;top:8%;left:50%;transform:translateX(-50%);background:#fff;color:#1a1a1a;border-radius:10px;padding:14px 18px;width:min(640px,92vw);max-height:74vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.4);';
@@ -283,7 +319,8 @@ public sealed class LocalEndpointServer : IDisposable
 
         string script = scriptTemplate
             .Replace("__ADD__", $"{BaseUrl}add")
-            .Replace("__BASE__", BaseUrl);
+            .Replace("__BASE__", BaseUrl)
+            .Replace("__TOKEN__", _token ?? "");
 
         // Skrip sengaja hanya memakai kutip tunggal dan tanpa < > & " supaya
         // aman langsung masuk atribut href tanpa HtmlEncode — encode justru
@@ -310,6 +347,6 @@ public sealed class LocalEndpointServer : IDisposable
     /// <summary>Hasil penerimaan URL: ok dan nama berkas/pesan untuk browser.</summary>
     public sealed record AddResult(bool Ok, string Message);
 
-    /// <summary>URL yang diterima endpoint, beserta referer halaman asalnya bila ada.</summary>
-    public sealed record AddRequest(string Url, string? Referer);
+    /// <summary>URL yang diterima endpoint, dengan konteks halaman asalnya.</summary>
+    public sealed record AddRequest(string Url, string? Referer, string? Cookies = null);
 }

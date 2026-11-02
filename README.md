@@ -72,11 +72,30 @@ membatalkan publish.
 src/SwiftGet.Core    Mesin unduhan: sesi, perencana segmen, klien HTTP,
                      parser playlist, penyimpanan manifest — tanpa UI.
 src/SwiftGet.App     UI WPF: jendela utama, view model, tema, watcher sistem.
+extension/           Ekstensi browser MV3 (Chrome/Edge, muat-unpacked).
 tests                xUnit: parser, planner, integrasi HTTP, perilaku UI.
 DESIGN.md            Otoritas desain: keputusan visual, interaksi, dan alasannya.
 AGENTS.md            Petunjuk untuk agen coding yang bekerja di repo ini.
-docs/                Catatan perilaku IDM (referensi) dan laporan delivery.
+docs/                Catatan REA IDM (mesin dan ekstensi) + laporan delivery.
 ```
+
+## Ekstensi browser (beta)
+
+Ekstensi menambahkan panel **"Unduh video ini"** di atas elemen video,
+gambar, dan audio di halaman mana pun — klik untuk mengirim ke SwiftGet
+lengkap dengan cookie sesi dan referer halaman.
+
+1. Salakan endpoint di SwiftGet: **Pengaturan → Integrasi browser**, catat
+   port dan token yang tampil di sana.
+2. Buka `chrome://extensions` (atau `edge://extensions`), aktifkan
+   **Mode pengembang**, klik **Muat unpacked**, pilih folder `extension/`.
+3. Buka opsi ekstensi, isi port dan token yang sama.
+4. Arahkan kursor ke video/gambar → panel hijau muncul → klik.
+
+Batasan yang jujur: video situs streaming berbasis MSE (YouTube dkk.)
+memakai URL `blob:` yang tidak pernah diberikan browser dalam bentuk
+terunduh — panel menandainya apa adanya. Keunggulan dibanding bookmarklet:
+cookie HttpOnly tetap terbaca lewat API ekstensi.
 
 ## Status pengembangan
 

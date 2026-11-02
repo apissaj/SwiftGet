@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font: 13px/1.6 system-ui, sans-serif;
+      max-width: 30rem;
+      margin: 2rem auto;
+      color: #1a1a1a;
+    }
+    h1 { font-size: 1.2rem; }
+    label { display: block; margin-top: 12px; font-weight: 600; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 9px;
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      font: inherit;
+    }
+    small { color: #666; }
+    button {
+      margin-top: 14px;
+      padding: 8px 16px;
+      border: 0;
+      border-radius: 6px;
+      background: #1f7a4a;
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    #status { margin-left: 10px; color: #1f7a4a; }
+  </style>
+</head>
+<body>
+  <h1>SwiftGet</h1>
+  <p>Panel "Unduh" di halaman mengirim unduhan ke aplikasi SwiftGet di komputer ini.
+     Samakan port dan token dengan <b>Pengaturan → Integrasi browser</b> di aplikasi.</p>
+
+  <label for="port">Port endpoint</label>
+  <input id="port" type="number" min="1024" max="65535">
+
+  <label for="token">Token</label>
+  <input id="token" type="text" autocomplete="off">
+
+  <button id="simpan">Simpan</button>
+  <span id="status"></span>
+
+  <script src="options.js"></script>
+</body>
+</html>

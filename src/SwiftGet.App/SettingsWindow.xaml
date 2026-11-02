@@ -105,6 +105,20 @@
                                        Style="{StaticResource Caption}" VerticalAlignment="Center"
                                        Margin="10,0,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
+                        <Grid Margin="12,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Token" Style="{StaticResource Caption}"
+                                       VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox x:Name="TokenBox" Grid.Column="1" Width="200"
+                                     Style="{StaticResource UrlTextBox}" IsReadOnly="True" />
+                            <TextBlock Grid.Column="2" Text="Disertakan ekstensi dan bookmarklet."
+                                       Style="{StaticResource Caption}" VerticalAlignment="Center"
+                                       Margin="10,0,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 

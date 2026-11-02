@@ -117,7 +117,16 @@ public partial class MainWindow : Window
 
         try
         {
-            _localEndpoint = new LocalEndpointServer(_settings.LocalEndpointPort, AddFromBrowserAsync);
+            // Token dibuat sekali saat endpoint pertama disalakan; ekstensi
+            // dan bookmarklet memakai nilai yang sama sampai dibuat ulang.
+            if (string.IsNullOrWhiteSpace(_settings.LocalEndpointToken))
+            {
+                _settings.LocalEndpointToken = Guid.NewGuid().ToString("N")[..20];
+                _settings.Save();
+            }
+
+            _localEndpoint = new LocalEndpointServer(_settings.LocalEndpointPort,
+                _settings.LocalEndpointToken, AddFromBrowserAsync);
             _localEndpoint.Start();
             _viewModel.SetStatus("Menerima unduhan dari browser di " + _localEndpoint.BaseUrl);
         }

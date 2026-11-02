@@ -40,6 +40,12 @@ public sealed class AppSettings
     public string FfmpegPath { get; set; } = "";
 
     /// <summary>
+    /// Token yang wajib disertakan ekstensi dan bookmarklet pada endpoint
+    /// lokal; dibuat otomatis saat endpoint pertama kali disalakan.
+    /// </summary>
+    public string LocalEndpointToken { get; set; } = "";
+
+    /// <summary>
     /// Tema terakhir yang dipilih pengguna. Null berarti ikuti tema Windows
     /// pada saat aplikasi dijalankan.
     /// </summary>

@@ -67,6 +67,12 @@ public sealed class DownloadTask
     public string? Referer { get; internal set; }
 
     /// <summary>
+    /// Cookie halaman asal (dari ekstensi browser) untuk server yang
+    /// mewajibkan sesi; resume memakai nilai yang sama.
+    /// </summary>
+    public string? Cookies { get; internal set; }
+
+    /// <summary>
     /// Keadaan resume unduhan multi-jalur DASH:
     /// <c>resume:jumlah,resume:jumlah</c> untuk jalur video lalu audio.
     /// </summary>
@@ -265,6 +271,7 @@ public sealed class DownloadTask
                 MediaResumeIndex = MediaResumeIndex,
                 MediaSegmentCount = MediaSegmentCount,
                 Referer = Referer,
+                Cookies = Cookies,
                 MediaTracksState = MediaTracksState,
                 State = _state,
                 LastError = _lastError,
@@ -299,6 +306,7 @@ public sealed class DownloadTask
             MediaResumeIndex = manifest.MediaResumeIndex,
             MediaSegmentCount = manifest.MediaSegmentCount,
             Referer = manifest.Referer,
+            Cookies = manifest.Cookies,
             MediaTracksState = manifest.MediaTracksState,
         };
 

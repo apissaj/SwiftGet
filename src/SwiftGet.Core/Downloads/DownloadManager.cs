@@ -74,7 +74,8 @@ public sealed class DownloadManager : IAsyncDisposable
     /// bila tersedia, jika tidak dari URL. Referer (halaman asal dari bookmarklet)
     /// dikirim ulang pada setiap permintaan, termasuk saat resume.
     /// </summary>
-    public DownloadTask Add(string url, string targetDirectory, string? fileName = null, string? referer = null)
+    public DownloadTask Add(string url, string targetDirectory, string? fileName = null,
+        string? referer = null, string? cookies = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
             throw new DownloadException(DownloadErrorKind.InvalidUrl, $"URL tidak valid: {url}");
@@ -85,6 +86,7 @@ public sealed class DownloadManager : IAsyncDisposable
 
         var task = new DownloadTask(Guid.NewGuid().ToString("N"), uri, targetDirectory, fileName);
         if (!string.IsNullOrWhiteSpace(referer)) task.Referer = referer;
+        if (!string.IsNullOrWhiteSpace(cookies)) task.Cookies = cookies;
         _tasks[task.Id] = task;
         return task;
     }

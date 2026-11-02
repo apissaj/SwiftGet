@@ -46,14 +46,16 @@ public sealed class LocalEndpointTests : IDisposable
     /// keburu direbut proses lain sebelum HttpListener memakainya, jadi bila
     /// Start kena AddressInUse, dicoba lagi dengan port lain (maks 5 kali).
     /// </summary>
-    private LocalEndpointServer MulaiServer(Func<LocalEndpointServer.AddRequest, Task<LocalEndpointServer.AddResult>>? add = null)
+    private LocalEndpointServer MulaiServer(
+        Func<LocalEndpointServer.AddRequest, Task<LocalEndpointServer.AddResult>>? add = null,
+        string? token = null)
     {
         add ??= CatatDanTerima;
         Exception? terakhir = null;
 
         for (int percobaan = 1; percobaan <= 5; percobaan++)
         {
-            var server = new LocalEndpointServer(AmbilPortBebas(), add);
+            var server = new LocalEndpointServer(AmbilPortBebas(), token, add);
             try
             {
                 server.Start();
@@ -80,10 +82,13 @@ public sealed class LocalEndpointTests : IDisposable
     private Task<LocalEndpointServer.AddResult> TolakDenganPesan(LocalEndpointServer.AddRequest request) =>
         Task.FromResult(new LocalEndpointServer.AddResult(false, "URL tidak valid: host tidak bisa diurai"));
 
-    private static string UrlAdd(string baseUrl, string url, string? referer = null)
+    private static string UrlAdd(string baseUrl, string url, string? referer = null,
+        string? cookies = null, string? token = null)
     {
         string hasil = $"{baseUrl}add?url={Uri.EscapeDataString(url)}";
         if (referer is not null) hasil += $"&referer={Uri.EscapeDataString(referer)}";
+        if (cookies is not null) hasil += $"&cookies={Uri.EscapeDataString(cookies)}";
+        if (token is not null) hasil += $"&token={Uri.EscapeDataString(token)}";
         return hasil;
     }
 
@@ -108,6 +113,23 @@ public sealed class LocalEndpointTests : IDisposable
         // Skrip deteksi: dialog pilihan kandidat dan pesan cadangan tanpa kandidat.
         Assert.Contains("Kirim ke SwiftGet — ", body);
         Assert.Contains("Tidak ada tautan berkas media", body);
+    }
+
+    [Theory]
+    [InlineData("rahasia123", "&token=rahasia123")]
+    [InlineData(null, "'&token='")]
+    public async Task HalamanRoot_MenyematkanTokenDalamSkrip(string? token, string yangDiharapkan)
+    {
+        var server = MulaiServer(token: token);
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(server.BaseUrl);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        string body = await resp.Content.ReadAsStringAsync();
+        // Token menempel pada URL kirim di dalam skrip; tanpa token slotnya
+        // tetap ada supaya skrip bookmarklet tetap utuh dan bisa diaudit.
+        Assert.Contains(yangDiharapkan, body);
     }
 
     // ---- GET /add ----
@@ -307,6 +329,174 @@ public sealed class LocalEndpointTests : IDisposable
         Assert.Equal("Parameter url kosong", await resp.Content.ReadAsStringAsync());
     }
 
+    // ---- Token pada /add ----
+
+    [Fact]
+    public async Task Add_DenganToken_TanpaToken_Ditolak401TanpaCallback()
+    {
+        var server = MulaiServer(token: "rahasia123");
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(UrlAdd(server.BaseUrl, "http://contoh/file.zip"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+        Assert.Equal("Token tidak valid", await resp.Content.ReadAsStringAsync());
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
+    }
+
+    [Fact]
+    public async Task Add_DenganToken_TokenSalah_Ditolak401TanpaCallback()
+    {
+        var server = MulaiServer(token: "rahasia123");
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(
+            UrlAdd(server.BaseUrl, "http://contoh/file.zip", token: "tebakan-ngawur"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+        Assert.Equal("Token tidak valid", await resp.Content.ReadAsStringAsync());
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
+    }
+
+    [Fact]
+    public async Task Add_DenganToken_TokenBenar_DiteruskanKeCallback()
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer(token: "rahasia123");
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(
+            UrlAdd(server.BaseUrl, "http://contoh/file.zip", token: "rahasia123"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var diterima = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("http://contoh/file.zip", diterima.Url);
+        Assert.Equal($"Diterima: {diterima.Url}", await resp.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Add_Post_TanpaToken_Ditolak401TanpaCallback()
+    {
+        var server = MulaiServer(token: "rahasia123");
+
+        using var klien = KlienBaru();
+        using var isi = new StringContent(
+            """{"url":"https://contoh/a.zip"}""", Encoding.UTF8, "application/json");
+        using var resp = await klien.PostAsync(server.BaseUrl + "add", isi);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+        Assert.Equal("Token tidak valid", await resp.Content.ReadAsStringAsync());
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
+    }
+
+    [Fact]
+    public async Task Add_Post_DenganTokenBenar_DiteruskanKeCallback()
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer(token: "rahasia123");
+
+        using var klien = KlienBaru();
+        using var isi = new StringContent(
+            """{"url":"https://contoh/a.zip","token":"rahasia123"}""",
+            Encoding.UTF8, "application/json");
+        using var resp = await klien.PostAsync(server.BaseUrl + "add", isi);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var diterima = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("https://contoh/a.zip", diterima.Url);
+        Assert.Equal($"Diterima: {diterima.Url}", await resp.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Konstruktor_TokenKosong_ValidasiDilewati(string token)
+    {
+        // Token yang kosong setelah trim diperlakukan sama dengan null: server
+        // tanpa token tidak boleh menuntut token pada request mana pun.
+        var server = MulaiServer(token: token);
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(UrlAdd(server.BaseUrl, "http://contoh/file.zip"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        lock (_requestKeCallback) Assert.Single(_requestKeCallback);
+    }
+
+    // ---- Cookies pada /add ----
+
+    [Fact]
+    public async Task Add_Get_DenganCookies_CallbackMenerimaCookiesPersis()
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(
+            UrlAdd(server.BaseUrl, "http://contoh/a.zip", cookies: "a=1; b=2"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var request = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("http://contoh/a.zip", request.Url);
+        Assert.Equal("a=1; b=2", request.Cookies);
+    }
+
+    [Fact]
+    public async Task Add_Post_DenganCookies_CallbackMenerimaCookiesPersis()
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var isi = new StringContent(
+            """{"url":"https://contoh/a.zip","cookies":"a=1; b=2"}""",
+            Encoding.UTF8, "application/json");
+        using var resp = await klien.PostAsync(server.BaseUrl + "add", isi);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var request = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("https://contoh/a.zip", request.Url);
+        Assert.Equal("a=1; b=2", request.Cookies);
+    }
+
+    [Theory]
+    [InlineData("get")]
+    [InlineData("post")]
+    public async Task Add_TanpaCookies_CallbackMenerimaNull(string metode)
+    {
+        _requestTerakhir = new TaskCompletionSource<LocalEndpointServer.AddRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        if (metode == "get")
+        {
+            await klien.GetAsync(UrlAdd(server.BaseUrl, "http://contoh/a.zip"));
+        }
+        else
+        {
+            using var isi = new StringContent(
+                """{"url":"https://contoh/a.zip"}""", Encoding.UTF8, "application/json");
+            await klien.PostAsync(server.BaseUrl + "add", isi);
+        }
+
+        var request = await _requestTerakhir.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Null(request.Cookies);
+    }
+
+    [Fact]
+    public async Task Add_CookieMelebihiBatas_Ditolak400TanpaCallback()
+    {
+        var server = MulaiServer();
+
+        using var klien = KlienBaru();
+        using var resp = await klien.GetAsync(
+            UrlAdd(server.BaseUrl, "http://contoh/a.zip", cookies: new string('c', 9000)));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal("Cookie terlalu besar", await resp.Content.ReadAsStringAsync());
+        lock (_requestKeCallback) Assert.Empty(_requestKeCallback);
+    }
+
     // ---- Route lain ----
 
     [Fact]
@@ -345,7 +535,7 @@ public sealed class LocalEndpointTests : IDisposable
     public void Konstruktor_PortDiLuarRentang_Melempar(int port)
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new LocalEndpointServer(port, CatatDanTerima));
+            () => new LocalEndpointServer(port, null, CatatDanTerima));
     }
 
     [Fact]

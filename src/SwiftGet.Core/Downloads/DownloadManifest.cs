@@ -52,6 +52,9 @@ public sealed class DownloadManifest
     /// <summary>Halaman asal tautan (bookmarklet), dikirim ulang saat resume.</summary>
     public string? Referer { get; set; }
 
+    /// <summary>Cookie halaman asal (ekstensi browser), dikirim ulang saat resume.</summary>
+    public string? Cookies { get; set; }
+
     /// <summary>
     /// Keadaan resume unduhan multi-jalur DASH:
     /// <c>resume:jumlah,resume:jumlah</c> untuk jalur video lalu audio.

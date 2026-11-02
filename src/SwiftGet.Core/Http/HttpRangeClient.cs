@@ -56,7 +56,7 @@ public sealed class HttpRangeClient : IDisposable
     /// <c>Range: bytes=0-0</c> yang membaca 1 byte saja.
     /// </para>
     /// </summary>
-    public async Task<ProbeResult> ProbeAsync(Uri uri, CancellationToken ct = default, string? referer = null)
+    public async Task<ProbeResult> ProbeAsync(Uri uri, CancellationToken ct = default, string? referer = null, string? cookies = null)
     {
         ArgumentNullException.ThrowIfNull(uri);
         ValidateScheme(uri);
@@ -65,7 +65,7 @@ public sealed class HttpRangeClient : IDisposable
         for (int hop = 0; hop <= 10; hop++)
         {
             using var head = new HttpRequestMessage(HttpMethod.Head, current);
-            using HttpResponseMessage resp = await SendAsync(head, ct, referer: referer).ConfigureAwait(false);
+            using HttpResponseMessage resp = await SendAsync(head, ct, referer: referer, cookies: cookies).ConfigureAwait(false);
 
             if (IsRedirect(resp.StatusCode))
             {
@@ -95,7 +95,7 @@ public sealed class HttpRangeClient : IDisposable
                 string? headName = HeaderParsing.ParseContentDispositionFileName(
                     resp.Content.Headers.TryGetValues("Content-Disposition", out var hcd)
                         ? string.Join(";", hcd) : null);
-                ProbeResult? confirmed = await ProbeWithRangeAsync(current, ct, headName, referer).ConfigureAwait(false);
+                ProbeResult? confirmed = await ProbeWithRangeAsync(current, ct, headName, referer, cookies).ConfigureAwait(false);
                 if (confirmed is not null) return confirmed;
 
                 // Tidak mendukung Range. Pakai panjang dari HEAD bila ada.
@@ -106,12 +106,12 @@ public sealed class HttpRangeClient : IDisposable
             if (resp.StatusCode is HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented
                 or HttpStatusCode.Forbidden)
             {
-                var ranged = await ProbeWithRangeAsync(current, ct, referer: referer).ConfigureAwait(false);
+                var ranged = await ProbeWithRangeAsync(current, ct, referer: referer, cookies: cookies).ConfigureAwait(false);
                 if (ranged is not null) return ranged;
 
                 // GET tanpa Range sebagai upaya terakhir untuk mendapat metadata.
                 using var get = new HttpRequestMessage(HttpMethod.Get, current);
-                using HttpResponseMessage getResp = await SendAsync(get, ct, referer: referer)
+                using HttpResponseMessage getResp = await SendAsync(get, ct, referer: referer, cookies: cookies)
                     .ConfigureAwait(false);
 
                 if (IsRedirect(getResp.StatusCode))
@@ -144,7 +144,7 @@ public sealed class HttpRangeClient : IDisposable
     /// </summary>
     public async Task<RangedResponse> GetRangeAsync(
         Uri uri, long fromInclusive, long toInclusive, CancellationToken ct = default,
-        string? referer = null)
+        string? referer = null, string? cookies = null)
     {
         ArgumentNullException.ThrowIfNull(uri);
         ValidateScheme(uri);
@@ -160,7 +160,7 @@ public sealed class HttpRangeClient : IDisposable
             // Beberapa CDN memakai kompresi yang merusak kesetaraan byte; minta identitas.
             request.Headers.TryAddWithoutValidation("Accept-Encoding", "identity");
 
-            HttpResponseMessage resp = await SendAsync(request, ct, HttpCompletionOption.ResponseHeadersRead, referer)
+            HttpResponseMessage resp = await SendAsync(request, ct, HttpCompletionOption.ResponseHeadersRead, referer, cookies)
                 .ConfigureAwait(false);
 
             if (IsRedirect(resp.StatusCode))
@@ -217,7 +217,7 @@ public sealed class HttpRangeClient : IDisposable
     /// bukan dimuat ke memori oleh klien ini. Redirect diikuti manual dengan
     /// aturan yang sama seperti jalur Range.
     /// </summary>
-    public async Task<FullResponse> GetAsync(Uri uri, CancellationToken ct = default, string? referer = null)
+    public async Task<FullResponse> GetAsync(Uri uri, CancellationToken ct = default, string? referer = null, string? cookies = null)
     {
         ArgumentNullException.ThrowIfNull(uri);
         ValidateScheme(uri);
@@ -228,7 +228,7 @@ public sealed class HttpRangeClient : IDisposable
             var request = new HttpRequestMessage(HttpMethod.Get, current);
             request.Headers.TryAddWithoutValidation("Accept-Encoding", "identity");
 
-            HttpResponseMessage resp = await SendAsync(request, ct, HttpCompletionOption.ResponseHeadersRead, referer)
+            HttpResponseMessage resp = await SendAsync(request, ct, HttpCompletionOption.ResponseHeadersRead, referer, cookies)
                 .ConfigureAwait(false);
 
             if (IsRedirect(resp.StatusCode))
@@ -247,13 +247,14 @@ public sealed class HttpRangeClient : IDisposable
     }
 
     private async Task<ProbeResult?> ProbeWithRangeAsync(
-        Uri uri, CancellationToken ct, string? fallbackFileName = null, string? referer = null)
+        Uri uri, CancellationToken ct, string? fallbackFileName = null,
+        string? referer = null, string? cookies = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.TryAddWithoutValidation("Range", "bytes=0-0");
         request.Headers.TryAddWithoutValidation("Accept-Encoding", "identity");
 
-        using HttpResponseMessage resp = await SendAsync(request, ct, referer: referer)
+        using HttpResponseMessage resp = await SendAsync(request, ct, referer: referer, cookies: cookies)
             .ConfigureAwait(false);
 
         // 200 OK berarti server MENGABAIKAN Range, jadi tidak bisa dipakai sebagai
@@ -328,11 +329,14 @@ public sealed class HttpRangeClient : IDisposable
     private async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken ct,
         HttpCompletionOption option = HttpCompletionOption.ResponseHeadersRead,
-        string? referer = null)
+        string? referer = null, string? cookies = null)
     {
-        // Asal permintaan dari bookmarklet; ditempel di semua hop redirect.
+        // Asal dan sesi halaman dari ekstensi/bookmarklet; ditempel di semua
+        // hop redirect. Cookie dikirim sebagai satu header utuh.
         if (!string.IsNullOrEmpty(referer))
             request.Headers.TryAddWithoutValidation("Referer", referer);
+        if (!string.IsNullOrEmpty(cookies))
+            request.Headers.TryAddWithoutValidation("Cookie", cookies);
 
         try
         {

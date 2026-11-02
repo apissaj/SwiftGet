@@ -24,6 +24,9 @@ src/SwiftGet.App/           UI WPF (net8.0-windows).
                             Humanize, Contrast, Converters
   Themes/                   Styles.xaml (satu-satunya sumber style), SpeedGraph, SegmentMap
   MainWindow.xaml(.cs)      Jendela utama; satu-satunya pemanggil ThemeManager.Apply saat runtime
+extension/                  Ekstensi browser MV3 (Chrome/Edge): panel unduh di
+                            halaman, POST ke endpoint lokal dengan token; plain JS,
+                            tidak dibangun dotnet — muat unpacked untuk mencoba.
 tests/SwiftGet.Tests/       xUnit, target net8.0. Semua perilaku baru wajib ada ujiannya.
 DESIGN.md                   OTORITAS DESAIN. Setiap keputusan UI harus cocok dengannya.
 docs/idm-behavior-notes.md  Catatan REA perilaku IDM (referensi mesin unduhan).

@@ -245,7 +245,7 @@ public sealed class MediaDownloadSession : IDownloadSession
     /// <summary>Ambil playlist (HLS/DASH) dan kembalikan jalur-jalurnya.</summary>
     private async Task<List<MediaPlaylist>> FetchTracksAsync(Uri url, CancellationToken ct)
     {
-        using FullResponse response = await _http.GetAsync(url, ct, _task.Referer).ConfigureAwait(false);
+        using FullResponse response = await _http.GetAsync(url, ct, _task.Referer, _task.Cookies).ConfigureAwait(false);
         string text = await ReadPlaylistTextAsync(response, ct).ConfigureAwait(false);
 
         string trimmed = text.TrimStart();
@@ -469,7 +469,7 @@ public sealed class MediaDownloadSession : IDownloadSession
                 await _budget.EnterConnectionAsync(host, ct).ConfigureAwait(false);
                 entered = true;
 
-                using FullResponse response = await _http.GetAsync(url, ct, _task.Referer).ConfigureAwait(false);
+                using FullResponse response = await _http.GetAsync(url, ct, _task.Referer, _task.Cookies).ConfigureAwait(false);
                 long? expected = response.Response.Content.Headers.ContentLength;
 
                 byte[] data;

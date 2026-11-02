@@ -737,6 +737,150 @@ public sealed class DownloaderIntegrationTests : IAsyncLifetime
         Assert.Equal(referer, _server.LastReferer);
         Assert.Equal(referer, _server.LastRefererPerPath["/partial-ref.bin"]);
     }
+
+    // ---------- Cookies: sesi halaman dari ekstensi browser ----------
+
+    [Fact]
+    public async Task Cookies_Diteruskan_Ke_Server()
+    {
+        _server.Content = MakePayload(256 * 1024);
+        Directory.CreateDirectory(OutDir);
+
+        await using var manager = new DownloadManager(StateDir,
+            new SchedulerOptions { MaxConnectionsPerDownload = 4 });
+        DownloadTask task = manager.Add(_server.UrlFor("file-cookie.bin").ToString(), OutDir,
+            cookies: "sid=abc; tema=gelap");
+        await manager.StartAsync(task.Id);
+
+        Assert.Equal(DownloadState.Completed, task.State);
+        // Header Cookie dikirim utuh, bukan diurai-dan-disusun ulang klien.
+        Assert.Contains("sid=abc; tema=gelap", _server.LastCookie);
+    }
+
+    [Fact]
+    public async Task Cookies_Tersimpan_Dan_Dipulihkan_Di_Manifest()
+    {
+        Directory.CreateDirectory(OutDir);
+        await using var manager = new DownloadManager(StateDir);
+
+        DownloadTask denganCookie = manager.Add("https://contoh/a.zip", OutDir,
+            cookies: "sid=abc; tema=gelap");
+        Assert.Equal("sid=abc; tema=gelap", denganCookie.Cookies);
+
+        DownloadManifest manifest = denganCookie.ToManifest();
+        Assert.Equal("sid=abc; tema=gelap", manifest.Cookies);
+
+        DownloadTask pulih = DownloadTask.FromManifest(manifest);
+        Assert.Equal("sid=abc; tema=gelap", pulih.Cookies);
+
+        // Tanpa cookie: tetap null di task, manifest, dan hasil pulih.
+        DownloadTask tanpaCookie = manager.Add("https://contoh/b.zip", OutDir);
+        Assert.Null(tanpaCookie.Cookies);
+        Assert.Null(tanpaCookie.ToManifest().Cookies);
+        Assert.Null(DownloadTask.FromManifest(tanpaCookie.ToManifest()).Cookies);
+    }
+
+    [Fact]
+    public async Task Resume_Mengirim_Ulang_Cookie()
+    {
+        _server.Content = MakePayload(2 * 1024 * 1024);
+        string cookies = "sid=abc; tema=gelap";
+
+        string id = Guid.NewGuid().ToString("N");
+        var store = new ManifestStore(StateDir);
+        using var http = new HttpRangeClient();
+        using var budget = new ConnectionBudget();
+
+        // Tahap 1: rencanakan segmen lalu tandai separuh selesai, meniru
+        // unduhan dari ekstensi yang berhenti di tengah jalan. Cookie ikut
+        // dipersist agar resume memakai sesi yang sama.
+        var task = new DownloadTask(id, _server.UrlFor("partial-cookie.bin"), OutDir, "partial-cookie.bin");
+        Directory.CreateDirectory(OutDir);
+        task.Cookies = cookies; // setter internal, terlihat lewat InternalsVisibleTo
+
+        ProbeResult probe = await http.ProbeAsync(task.Url);
+        task.TotalLength = probe.ContentLength;
+        task.SupportsRanges = probe.CanSegment;
+        task.ETag = probe.ETag;
+
+        var segments = SegmentPlanner.Plan(probe.ContentLength!.Value, 4);
+        foreach (var s in segments)
+        {
+            typeof(Segment).GetProperty(nameof(Segment.BytesDone))!.SetValue(s, s.Length / 2);
+        }
+        task.SetSegments(segments);
+
+        string partPath = store.GetPartPath(id);
+        using (var part = PartFile.Open(partPath, probe.ContentLength.Value))
+        {
+            foreach (var s in segments)
+            {
+                int half = (int)(s.BytesDone);
+                await part.WriteAtAsync(s.Start, _server.Content.AsMemory((int)s.Start, half), default);
+            }
+        }
+
+        task.SetState(DownloadState.Paused);
+        await store.SaveAsync(task.ToManifest());
+
+        // Probe tahap 1 di atas sengaja tanpa cookie, jadi snapshot ini harus
+        // null; nilai non-null setelahnya pasti berasal dari fase resume.
+        string? cookieSebelumResume = _server.LastCookie;
+
+        // Tahap 2: pulihkan dari manifest dan lanjutkan.
+        DownloadManifest? manifest = await store.LoadAsync(id);
+        Assert.NotNull(manifest);
+        Assert.Equal(cookies, manifest!.Cookies);
+
+        DownloadTask restored = DownloadTask.FromManifest(manifest);
+        Assert.Equal(cookies, restored.Cookies);
+
+        await using var session = new DownloadSession(restored, http, budget, store, maxConnections: 4);
+        await session.RunAsync();
+
+        Assert.Equal(DownloadState.Completed, restored.State);
+
+        byte[] actual = await File.ReadAllBytesAsync(restored.FinalPath);
+        Assert.Equal(_server.Content, actual);
+
+        Assert.Null(cookieSebelumResume);
+        Assert.Contains(cookies, _server.LastCookie);
+    }
+
+    [Theory]
+    [InlineData("probe")]
+    [InlineData("range")]
+    [InlineData("penuh")]
+    public async Task HttpRangeClient_Mengirim_Header_Cookie_Pada_Semua_Jenis_Permintaan(string jenis)
+    {
+        _server.Content = MakePayload(64 * 1024);
+        string cookies = "sid=abc; tema=gelap";
+        using var http = new HttpRangeClient();
+        Uri url = _server.UrlFor("cookie-client.bin");
+
+        switch (jenis)
+        {
+            case "probe":
+                ProbeResult probe = await http.ProbeAsync(url, cookies: cookies);
+                Assert.True(probe.SupportsRanges);
+                break;
+            case "range":
+                using (var ranged = await http.GetRangeAsync(url, 0, 15, cookies: cookies))
+                {
+                    Assert.True(ranged.RangeHonored);
+                }
+                break;
+            default:
+                using (var penuh = await http.GetAsync(url, cookies: cookies))
+                {
+                    using var stream = penuh.GetStream();
+                    Assert.True(stream.CanRead);
+                }
+                break;
+        }
+
+        Assert.Contains(cookies, _server.LastCookie);
+    }
 }
 
 

@@ -37,6 +37,7 @@ public partial class SettingsWindow : Window
 
         LocalEndpointBox.IsChecked = settings.EnableLocalEndpoint;
         PortBox.Text = settings.LocalEndpointPort.ToString();
+        TokenBox.Text = settings.LocalEndpointToken;
 
         _ready = true;
         UpdateLabels();

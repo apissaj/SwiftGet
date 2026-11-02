@@ -237,7 +237,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             Directory.CreateDirectory(_settings.DownloadDirectory);
 
-            DownloadTask task = Manager.Add(request.Url, _settings.DownloadDirectory, referer: request.Referer);
+            DownloadTask task = Manager.Add(request.Url, _settings.DownloadDirectory,
+                referer: request.Referer, cookies: request.Cookies);
             DownloadItemViewModel item = Downloads.Add(task);
             SelectedItem = item;
             RefreshCommandStates();

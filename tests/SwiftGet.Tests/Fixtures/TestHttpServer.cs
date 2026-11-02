@@ -127,6 +127,13 @@ public sealed class TestHttpServer : IAsyncDisposable
     public Dictionary<string, string?> LastRefererPerPath { get; } =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Header Cookie dari permintaan GET/HEAD terakhir; null bila permintaan
+    /// terakhir tidak membawanya. Sama seperti LastReferer: unduhan membawa
+    /// cookie yang sama pada semua permintaan, jadi satu nilai cukup.
+    /// </summary>
+    public string? LastCookie { get; private set; }
+
     /// <summary>Catat header Referer permintaan GET/HEAD yang baru masuk.</summary>
     private void CatatReferer(HttpListenerRequest req)
     {
@@ -138,6 +145,14 @@ public sealed class TestHttpServer : IAsyncDisposable
             lock (LastRefererPerPath)
                 LastRefererPerPath[path] = LastReferer;
         }
+    }
+
+    /// <summary>Catat header Cookie permintaan GET/HEAD yang baru masuk.</summary>
+    private void CatatCookie(HttpListenerRequest req)
+    {
+        if (req.HttpMethod is not ("GET" or "HEAD")) return;
+
+        LastCookie = req.Headers["Cookie"];
     }
 
     private readonly Dictionary<string, int> _failSisaPerPath = new(StringComparer.OrdinalIgnoreCase);
@@ -244,6 +259,7 @@ public sealed class TestHttpServer : IAsyncDisposable
             HttpListenerResponse res = ctx.Response;
 
             CatatReferer(req);
+            CatatCookie(req);
 
             if (NotFound)
             {
