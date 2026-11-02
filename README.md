@@ -1,5 +1,10 @@
 # SwiftGet
 
+[![CI](https://github.com/apissaj/SwiftGet/actions/workflows/ci.yml/badge.svg)](https://github.com/apissaj/SwiftGet/actions/workflows/ci.yml)
+![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
+![Lisensi](https://img.shields.io/badge/lisensi-MIT-green)
+
 Pengelola unduhan untuk Windows: satu berkas dipencah menjadi beberapa bagian
 yang diunduh bersamaan, disusun ulang saat berjalan, dan diverifikasi sebelum
 dinyatakan selesai. Dibangun dengan WPF (.NET 8), tanpa dependensi runtime
@@ -87,4 +92,9 @@ Rilis 2 (selesai):
 - [x] Kategori dan riwayat unduhan (`40b874b`)
 - [x] Endpoint lokal 127.0.0.1 + bookmarklet (`871f45f`)
 - [x] HLS/DASH dengan penggabungan segmen (`c47ebba`)
-- [x] Dokumentasi dan laporan delivery (`66d30ee`, commit ini)
+- [x] Dokumentasi dan laporan delivery (`66d30ee`, `01aebd1`)
+- [x] Perbaikan seleksi panel periksa saat daftar menyaring ulang (`38eaadb`)
+
+## Lisensi
+
+[MIT](LICENSE) — bebas dipakai, diubah, dan didistribusikan.
