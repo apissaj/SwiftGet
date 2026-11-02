@@ -16,6 +16,20 @@
   const seen = new Set();
   let total = 0;
 
+  // Content script (isolated world) memberi sinyal "ready" setelah listener
+  // terpasang; sebelum itu, kandidat mengantre agar tidak ada yang hilang
+  // oleh race antara document_start dan selesainya pendaftaran listener.
+  let ready = false;
+  const queue = [];
+  window.addEventListener("message", (e) => {
+    if (e.source !== window && e.source !== e.target) return;
+    const d = e.data;
+    if (!d || d.__swiftget__ !== true || d.kind !== "ready") return;
+    ready = true;
+    for (const msg of queue) window.postMessage(msg, location.origin);
+    queue.length = 0;
+  });
+
   function extract(text) {
     if (!text || typeof text !== "string") return;
     if (text.length > MAX_SCAN) text = text.slice(0, MAX_SCAN);
@@ -31,9 +45,9 @@
 
     if (fresh.length) {
       total += fresh.length;
-      // Kontrak ke content script (isolated world): dipercaya karena sumber
-      // kejadian diverifikasi sama-window dan penanda khusus.
-      window.postMessage({ __swiftget__: true, kind: "media", total, urls: fresh }, location.origin);
+      const msg = { __swiftget__: true, kind: "media", total, urls: fresh };
+      if (ready) window.postMessage(msg, location.origin);
+      else queue.push(msg);
     }
   }
 

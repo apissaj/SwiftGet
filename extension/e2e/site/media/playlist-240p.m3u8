@@ -1,0 +1,7 @@
+#EXTM3U
+#EXT-X-TARGETDURATION:2
+#EXTINF:1.0,
+/media/seg-1.ts
+#EXTINF:1.0,
+/media/seg-2.ts
+#EXT-X-ENDLIST

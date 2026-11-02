@@ -7,6 +7,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
 
+  if (msg && msg.type === "swiftget-get-config") {
+    chrome.storage.local.get({ port: 49160 }, (cfg) => sendResponse({ port: cfg.port }));
+    return true;
+  }
+
   if (msg && msg.type === "swiftget-add") {
     terimaUnduhan(msg).then(sendResponse);
     return true; // respons async

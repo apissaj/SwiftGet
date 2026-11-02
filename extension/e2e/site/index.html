@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><title>Situs Uji SwiftGet</title></head>
+<body style="font-family:system-ui;max-width:640px;margin:2rem auto">
+  <h1>Situs uji integrasi SwiftGet</h1>
+  <video id="v1" width="320" height="240" controls muted
+         src="/media/video-320p.mp4"></video>
+  <p><img id="i1" width="480" height="120" src="/media/gambar-1.png"></p>
+  <script>
+    // Simulasi API situs streaming: URL media hanya ada di respons JSON.
+    fetch("/api/media.json").then(r => r.json()).then(j => {
+      window.__mediaApi__ = j;
+      document.getElementById("api-status").textContent = "API dimuat: " + j.player.source;
+    });
+  </script>
+  <p id="api-status">API belum dimuat</p>
+</body></html>
