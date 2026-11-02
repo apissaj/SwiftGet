@@ -85,6 +85,12 @@ Ekstensi menambahkan panel **"Unduh video ini"** di atas elemen video,
 gambar, dan audio di halaman mana pun — klik untuk mengirim ke SwiftGet
 lengkap dengan cookie sesi dan referer halaman.
 
+Selain DOM, ekstensi memindai respons `XHR`/`fetch` di dunia halaman
+(mekanisme ala IDM): URL media yang tak pernah muncul di DOM — sumber dari
+API situs streaming — terkumpul di **badge penghitung** pojok kanan bawah;
+klik untuk memilih dan mengirim. Respons dibaca lewat clone dan dibatasi
+ukuran, aplikasi tidak terganggu.
+
 1. Salakan endpoint di SwiftGet: **Pengaturan → Integrasi browser**, catat
    port dan token yang tampil di sana.
 2. Buka `chrome://extensions` (atau `edge://extensions`), aktifkan

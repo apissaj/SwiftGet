@@ -134,4 +134,103 @@
     chrome.runtime.sendMessage({ type: "swiftget-open-options" });
     hide();
   });
+
+  // ============================================================
+  // Kandidat dari jaringan (tahap 2): inject.js di dunia halaman
+  // memindai respons XHR/fetch; kandidat dikumpulkan di sini dan
+  // diumumkan lewat badge pojok kanan bawah + picker in-page.
+  // ============================================================
+
+  const candidates = new Map(); // url -> "baru" | "terkirim"
+  let badge, picker;
+
+  function isOurEndpoint(url) {
+    return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url);
+  }
+
+  window.addEventListener("message", (e) => {
+    // Sumber harus window yang sama (dunia halaman) dan penanda khusus;
+    // halaman lain tidak bisa memalsukan pesan lintas-origin ini.
+    if (e.source !== window || !e.data || e.data.__swiftget__ !== true) return;
+    if (e.data.kind !== "media" || !Array.isArray(e.data.urls)) return;
+
+    let added = 0;
+    for (const url of e.data.urls) {
+      if (isOurEndpoint(url) || candidates.has(url)) continue;
+      candidates.set(url, "baru");
+      added++;
+    }
+    if (added) updateBadge();
+  });
+
+  function updateBadge() {
+    const baru = [...candidates.values()].filter((s) => s === "baru").length;
+    if (!candidates.size) {
+      badge?.remove();
+      badge = null;
+      return;
+    }
+
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.className = "swiftget-badge";
+      badge.title = "Kandidat unduhan dari SwiftGet";
+      badge.textContent = "⬇";
+      badge.addEventListener("click", openPicker);
+      document.documentElement.appendChild(badge);
+    }
+    badge.textContent = baru > 0 ? `⬇ ${candidates.size} (${baru} baru)` : `⬇ ${candidates.size}`;
+  }
+
+  function openPicker() {
+    if (picker) closePicker();
+
+    picker = document.createElement("div");
+    picker.className = "swiftget-overlay";
+    const box = document.createElement("div");
+    box.className = "swiftget-picker";
+    const head = document.createElement("div");
+    head.className = "swiftget-picker-head";
+    head.textContent = `Kirim ke SwiftGet — ${candidates.size} kandidat`;
+    box.appendChild(head);
+
+    for (const [url, status] of candidates) {
+      const row = document.createElement("a");
+      row.className = "swiftget-picker-row" + (status === "terkirim" ? " swiftget-sent" : "");
+      row.textContent = status === "terkirim" ? `✓ ${url}` : url;
+      row.href = "#";
+      row.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        row.textContent = "Mengirim…";
+        const reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer: location.href });
+        if (reply && reply.ok) {
+          candidates.set(url, "terkirim");
+          row.classList.add("swiftget-sent");
+          row.textContent = `✓ ${url}`;
+          updateBadge();
+        } else {
+          row.textContent = (reply && reply.message) || "Gagal mengirim";
+        }
+      });
+      box.appendChild(row);
+    }
+
+    const close = document.createElement("a");
+    close.className = "swiftget-picker-close";
+    close.textContent = "Tutup";
+    close.href = "#";
+    close.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      closePicker();
+    });
+    box.appendChild(close);
+
+    picker.appendChild(box);
+    document.documentElement.appendChild(picker);
+  }
+
+  function closePicker() {
+    picker?.remove();
+    picker = null;
+  }
 })();

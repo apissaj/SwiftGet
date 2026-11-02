@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SwiftGet",
   "description": "Tangkap unduhan, video, dan gambar dari halaman; kirim ke aplikasi SwiftGet.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "apissaj",
   "homepage_url": "https://github.com/apissaj/SwiftGet",
 
@@ -23,6 +23,13 @@
       "css": ["panel.css"],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
     }
   ],
 
