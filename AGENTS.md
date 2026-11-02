@@ -76,10 +76,10 @@ dotnet test tests/SwiftGet.Tests/SwiftGet.Tests.csproj -v q   # wajib lulus sebe
 Rencana besar dibagi fase dan **satu fase = satu commit**:
 
 - [x] **Fase A** — tema tersimpan + ikut sistem, focus trap panel periksa (`efc0725`)
-- [ ] **Fase B** — reduce-motion reaktif, filter daftar + urut kolom
-- [ ] **Fase C** — verifikasi checksum otomatis
-- [ ] **Fase D** — dynamic segmentation
-- [ ] **Fase E** — kategori dan riwayat unduhan
+- [x] **Fase B** — reduce-motion reaktif, filter daftar + urut kolom (`e8b2533`)
+- [x] **Fase C** — verifikasi checksum otomatis (`3d0f533`)
+- [x] **Fase D** — dynamic segmentation (`333d2ec`)
+- [x] **Fase E** — kategori dan riwayat unduhan (`40b874b`)
 - [ ] **Fase F** — endpoint lokal 127.0.0.1 + bookmarklet
 - [ ] **Fase G** — HLS/DASH (.m3u8/.mpd)
 - Terakhir: perbarui DESIGN.md (§16 celah) + README + laporan Delivery Gate.
