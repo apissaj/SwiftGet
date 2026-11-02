@@ -15,7 +15,7 @@ namespace SwiftGet.Core.Downloads;
 public sealed class DownloadManager : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, DownloadTask> _tasks = new();
-    private readonly ConcurrentDictionary<string, DownloadSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, IDownloadSession> _sessions = new();
     private readonly SemaphoreSlim _runGate;
     private readonly ConnectionBudget _budget;
     private readonly ManifestStore _store;
@@ -102,7 +102,7 @@ public sealed class DownloadManager : IAsyncDisposable
         if (task.State == DownloadState.Completed)
             return;
 
-        DownloadSession session = _sessions.AddOrUpdate(
+        IDownloadSession session = _sessions.AddOrUpdate(
             id,
             _ => CreateSession(task),
             (_, existing) => existing);
@@ -121,19 +121,32 @@ public sealed class DownloadManager : IAsyncDisposable
         StateChanged?.Invoke(id, task.State, task.LastError);
     }
 
-    private DownloadSession CreateSession(DownloadTask task) =>
-        new(task, _http, _budget, _store, _options.MaxConnectionsPerDownload,
-            retry: null, onProgress: p => ProgressChanged?.Invoke(p));
+    /// <summary>
+    /// Pabrik sesi: URL playlist (.m3u8/.mpd) memakai sesi media yang menggabung
+    /// segmen; URL lain memakai sesi Range biasa. Deteksi konten lebih lanjut
+    /// (server yang tidak memakai ekstensi) dikerjakan di dalam sesi media.
+    /// </summary>
+    private IDownloadSession CreateSession(DownloadTask task)
+    {
+        Action<DownloadProgress> onProgress = p => ProgressChanged?.Invoke(p);
+
+        if (Media.MediaPlaylistDetector.IsPlaylistUrl(task.Url))
+            return new Media.MediaDownloadSession(task, _http, _budget, _store,
+                _options.MaxConnectionsPerDownload, retry: null, onProgress);
+
+        return new DownloadSession(task, _http, _budget, _store,
+            _options.MaxConnectionsPerDownload, retry: null, onProgress);
+    }
 
     public void Pause(string id)
     {
-        if (_sessions.TryGetValue(id, out DownloadSession? session))
+        if (_sessions.TryGetValue(id, out IDownloadSession? session))
             session.Pause();
     }
 
     public void Cancel(string id)
     {
-        if (_sessions.TryGetValue(id, out DownloadSession? session))
+        if (_sessions.TryGetValue(id, out IDownloadSession? session))
             session.Cancel();
 
         if (_tasks.TryGetValue(id, out DownloadTask? task))
@@ -157,7 +170,7 @@ public sealed class DownloadManager : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
-        foreach (DownloadSession session in _sessions.Values)
+        foreach (IDownloadSession session in _sessions.Values)
         {
             session.Pause();
             await session.DisposeAsync().ConfigureAwait(false);

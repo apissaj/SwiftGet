@@ -93,6 +93,104 @@ public sealed class TestHttpServer : IAsyncDisposable
     /// <summary>Rentang yang diminta, berurutan.</summary>
     public List<(long From, long To)> RequestedRanges { get; } = new();
 
+    /// <summary>
+    /// Routing per-path (AbsolutePath, case-insensitive): path yang terdaftar
+    /// dilayani 200 dengan Content-Length yang benar, entah GET maupun HEAD.
+    /// Lookup dilakukan paling awal di HandleAsync, sebelum logika Range; header
+    /// Range pada path yang terdaftar diabaikan (selalu dijawab 200 penuh).
+    /// </summary>
+    public Dictionary<string, byte[]> Routes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Content-Type per path untuk Routes; bila tidak diisi, application/octet-stream.</summary>
+    public Dictionary<string, string> RouteContentTypes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// N permintaan GET pertama ke path (AbsolutePath) digagalkan dengan
+    /// memutus koneksi lewat <c>res.Abort()</c> sebelum respons dikirim;
+    /// permintaan setelah itu dilayani normal.
+    /// </summary>
+    public Dictionary<string, int> FailFirstPerPath { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, int> _failSisaPerPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _getPerPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _routeGate = new();
+
+    /// <summary>Daftarkan isi statis untuk satu path (AbsolutePath, mis. "/video/seg-1.ts").</summary>
+    public void Route(string path, byte[] content, string? contentType = null)
+    {
+        if (!path.StartsWith('/')) path = "/" + path;
+        Routes[path] = content;
+        if (contentType is not null) RouteContentTypes[path] = contentType;
+    }
+
+    /// <summary>Daftarkan isi teks (UTF-8) untuk satu path.</summary>
+    public void RouteText(string path, string text, string? contentType = null) =>
+        Route(path, Encoding.UTF8.GetBytes(text), contentType);
+
+    /// <summary>Jumlah permintaan GET yang diterima untuk satu path (AbsolutePath).</summary>
+    public int GetRequestCountFor(string path)
+    {
+        if (!path.StartsWith('/')) path = "/" + path;
+        lock (_getPerPath) return _getPerPath.TryGetValue(path, out int n) ? n : 0;
+    }
+
+    /// <summary>Hitung apakah permintaan GET ini termasuk jatah gagal FailFirstPerPath.</summary>
+    private bool MasukJatahGagal(string path)
+    {
+        lock (_routeGate)
+        {
+            if (!FailFirstPerPath.TryGetValue(path, out int jumlah)) return false;
+            if (!_failSisaPerPath.TryGetValue(path, out int sisa)) sisa = jumlah;
+            if (sisa <= 0) return false;
+            _failSisaPerPath[path] = sisa - 1;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Layani path yang terdaftar di Routes: HEAD dengan Content-Length benar,
+    /// GET 200 penuh (Range diabaikan), atau koneksi diputus bila path itu
+    /// masih punya jatah di FailFirstPerPath.
+    /// </summary>
+    private async System.Threading.Tasks.Task ServeRouteAsync(
+        HttpListenerRequest req, HttpListenerResponse res, string path, byte[] content)
+    {
+        string contentType = RouteContentTypes.TryGetValue(path, out string? ct)
+            ? ct : "application/octet-stream";
+
+        if (req.HttpMethod == "HEAD")
+        {
+            res.ContentType = contentType;
+            res.ContentLength64 = content.Length;
+            res.Close();
+            return;
+        }
+
+        Interlocked.Increment(ref GetRequestCount);
+        lock (_getPerPath)
+        {
+            _getPerPath.TryGetValue(path, out int n);
+            _getPerPath[path] = n + 1;
+        }
+
+        if (MasukJatahGagal(path))
+        {
+            // Putus sebelum satu byte pun dikirim agar klien melihat kegagalan
+            // koneksi yang layak dicoba ulang (DownloadException ConnectionFailed).
+            // Respons yang terpotong di tengah isi malah muncul sebagai
+            // HttpIOException saat isi segmen dibaca — kelas galat yang tidak
+            // ditangkap pengambil segmen — dan membuat sesi media menggantung.
+            res.Abort();
+            return;
+        }
+
+        res.StatusCode = 200;
+        res.ContentType = contentType;
+        res.ContentLength64 = content.Length;
+        await res.OutputStream.WriteAsync(content).ConfigureAwait(false);
+        res.Close();
+    }
+
     /// <summary>Nomor urut permintaan data; hanya dihitung untuk GET berisi > 1 byte.</summary>
     private int _dataRequestSeq;
 
@@ -120,6 +218,14 @@ public sealed class TestHttpServer : IAsyncDisposable
             {
                 res.StatusCode = 404;
                 res.Close();
+                return;
+            }
+
+            // Routing per-path diperiksa paling awal, sebelum logika Range.
+            string? routePath = req.Url?.AbsolutePath;
+            if (routePath is not null && Routes.TryGetValue(routePath, out byte[]? routed))
+            {
+                await ServeRouteAsync(req, res, routePath, routed).ConfigureAwait(false);
                 return;
             }
 

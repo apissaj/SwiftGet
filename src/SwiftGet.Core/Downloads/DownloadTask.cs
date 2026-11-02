@@ -49,6 +49,17 @@ public sealed class DownloadTask
 
     public string? ChecksumValue { get; internal set; }
 
+    /// <summary>True bila unduhan ini playlist media (HLS/DASH) yang digabung
+    /// dari segmen, bukan berkas tunggal dengan Range.</summary>
+    public bool IsMedia { get; internal set; }
+
+    /// <summary>Index segmen media berikutnya yang BELUM tertulis; kunci resume.</summary>
+    public int? MediaResumeIndex { get; internal set; }
+
+    /// <summary>Jumlah segmen saat rencana media dibuat; playlist yang berubah
+    /// jumlah segmennya dianggap beda konten dan unduhan mulai dari nol.</summary>
+    public int? MediaSegmentCount { get; internal set; }
+
     public DownloadState State
     {
         get { lock (_gate) return _state; }
@@ -238,6 +249,9 @@ public sealed class DownloadTask
                 LastModifiedRaw = LastModifiedRaw,
                 ChecksumAlgorithm = ChecksumAlgorithm,
                 ChecksumValue = ChecksumValue,
+                IsMedia = IsMedia,
+                MediaResumeIndex = MediaResumeIndex,
+                MediaSegmentCount = MediaSegmentCount,
                 State = _state,
                 LastError = _lastError,
                 Segments = _segments.Select(s => new DownloadManifest.SegmentRecord
@@ -267,6 +281,9 @@ public sealed class DownloadTask
             FinalUri = manifest.FinalUrl is null ? null : new Uri(manifest.FinalUrl),
             ChecksumAlgorithm = manifest.ChecksumAlgorithm,
             ChecksumValue = manifest.ChecksumValue,
+            IsMedia = manifest.IsMedia,
+            MediaResumeIndex = manifest.MediaResumeIndex,
+            MediaSegmentCount = manifest.MediaSegmentCount,
         };
 
         task._lastError = manifest.LastError;

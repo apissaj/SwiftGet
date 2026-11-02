@@ -40,6 +40,15 @@ public sealed class DownloadManifest
 
     public string? ChecksumValue { get; set; }
 
+    /// <summary>Unduhan playlist media (HLS/DASH) yang digabung dari segmen.</summary>
+    public bool IsMedia { get; set; }
+
+    /// <summary>Index segmen media berikutnya yang belum tertulis (resume).</summary>
+    public int? MediaResumeIndex { get; set; }
+
+    /// <summary>Jumlah segmen saat rencana dibuat; berubah berarti konten berubah.</summary>
+    public int? MediaSegmentCount { get; set; }
+
     public string? ContentType { get; set; }
 
     public DownloadState State { get; set; } = DownloadState.Queued;

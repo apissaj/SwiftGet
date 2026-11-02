@@ -233,7 +233,14 @@ public sealed class DownloadItemViewModel : ObservableObject
     public void Apply(DownloadProgress progress)
     {
         State = progress.State;
-        Fraction = progress.Fraction;
+
+        // Unduhan media (HLS/DASH) tidak tahu ukuran totalnya; kemajuan yang
+        // jujur adalah rasio segmen, bukan persen karangan dari byte.
+        double fraction = progress.Fraction;
+        if (progress.TotalBytes is null && progress.TotalSegments > 0)
+            fraction = (double)progress.CompletedSegments / progress.TotalSegments;
+        Fraction = fraction;
+
         BytesDownloaded = progress.BytesDownloaded;
         TotalBytes = progress.TotalBytes;
         BytesPerSecond = progress.BytesPerSecond;

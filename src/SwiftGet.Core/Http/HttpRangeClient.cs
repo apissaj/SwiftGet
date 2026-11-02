@@ -211,6 +211,40 @@ public sealed class HttpRangeClient : IDisposable
             $"Terlalu banyak redirect saat mengunduh {uri}.");
     }
 
+    /// <summary>
+    /// GET penuh untuk berkas kecil seperti playlist media. Isi di-stream,
+    /// bukan dimuat ke memori oleh klien ini. Redirect diikuti manual dengan
+    /// aturan yang sama seperti jalur Range.
+    /// </summary>
+    public async Task<FullResponse> GetAsync(Uri uri, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        ValidateScheme(uri);
+
+        Uri current = uri;
+        for (int hop = 0; hop <= 10; hop++)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, current);
+            request.Headers.TryAddWithoutValidation("Accept-Encoding", "identity");
+
+            HttpResponseMessage resp = await SendAsync(request, ct, HttpCompletionOption.ResponseHeadersRead)
+                .ConfigureAwait(false);
+
+            if (IsRedirect(resp.StatusCode))
+            {
+                current = ResolveRedirect(current, resp);
+                resp.Dispose();
+                continue;
+            }
+
+            EnsureSuccess(resp, current);
+            return new FullResponse(resp, current);
+        }
+
+        throw new DownloadException(DownloadErrorKind.HttpStatus,
+            $"Terlalu banyak redirect saat mengambil {uri}.");
+    }
+
     private async Task<ProbeResult?> ProbeWithRangeAsync(Uri uri, CancellationToken ct, string? fallbackFileName = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -371,6 +405,30 @@ public sealed class RangedResponse : IDisposable
 
     /// <summary>True bila server menjawab 206 dan menghormati rentang yang diminta.</summary>
     public bool RangeHonored { get; }
+
+    public Stream GetStream() => Response.Content.ReadAsStream();
+
+    public void Dispose() => Response.Dispose();
+}
+
+/// <summary>
+/// Respons GET penuh: isi media (playlist, segmen) dibaca stream oleh
+/// pemanggil. <see cref="FinalUri"/> dipakai untuk meresolusi URL relatif
+/// di dalam playlist.
+/// </summary>
+public sealed class FullResponse : IDisposable
+{
+    public FullResponse(HttpResponseMessage response, Uri finalUri)
+    {
+        Response = response;
+        FinalUri = finalUri;
+    }
+
+    public HttpResponseMessage Response { get; }
+
+    public Uri FinalUri { get; }
+
+    public string ContentType => Response.Content.Headers.ContentType?.MediaType ?? "";
 
     public Stream GetStream() => Response.Content.ReadAsStream();
 

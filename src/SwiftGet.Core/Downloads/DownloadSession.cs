@@ -21,7 +21,7 @@ namespace SwiftGet.Core.Downloads;
 /// </list>
 /// </para>
 /// </summary>
-public sealed class DownloadSession : IAsyncDisposable
+public sealed class DownloadSession : IDownloadSession
 {
     private const int CopyBufferSize = 128 * 1024;
 
