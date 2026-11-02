@@ -31,7 +31,7 @@ function Write-Step([string]$Text) {
 }
 
 Write-Step 'Menjalankan unit test'
-dotnet test (Join-Path $root 'src\SwiftGet.sln') -c Release --nologo -v q
+dotnet test (Join-Path $root 'SwiftGet.sln') -c Release --nologo -v q
 if ($LASTEXITCODE -ne 0) { throw 'Unit test gagal; publish dibatalkan.' }
 
 if ($Target -in @('portable', 'all')) {

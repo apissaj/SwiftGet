@@ -93,7 +93,7 @@ Rilis 2 (selesai):
 - [x] Endpoint lokal 127.0.0.1 + bookmarklet (`871f45f`)
 - [x] HLS/DASH dengan penggabungan segmen (`c47ebba`)
 - [x] Dokumentasi dan laporan delivery (`66d30ee`, `01aebd1`)
-- [x] Perbaikan seleksi panel periksa saat daftar menyaring ulang (`38eaadb`)
+- [x] Perbaikan seleksi panel periksa saat daftar menyaring ulang (`eac4520`)
 
 ## Lisensi
 
