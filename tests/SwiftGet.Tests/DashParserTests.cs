@@ -6,6 +6,7 @@ namespace SwiftGet.Tests;
 
 /// <summary>
 /// Uji pengurai MPD DASH tanpa I/O: SegmentList, SegmentTemplate ber-$Number$,
+/// SegmentTimeline eksplisit, pengisi nol dan token template lainnya,
 /// pilihan Representation, penolakan multi-AdaptationSet, dan galat XML.
 /// </summary>
 public class DashParserTests
@@ -205,5 +206,267 @@ public class DashParserTests
             DashPlaylistParser.Parse("<rss version=\"2.0\"/>", BaseUri));
 
         Assert.Equal(DownloadErrorKind.CorruptResponse, ex.Kind);
+    }
+
+    // ---- SegmentTemplate: pengisi nol $Number%0Nd$ ----
+
+    [Fact]
+    public void SegmentTemplate_NumberDenganPengisiNol_MenghasilkanNomorBerlebarTetap()
+    {
+        // PT10S dengan durasi 4 detik → 3 segmen, mulai dari startNumber 7.
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Number%05d$.m4s" duration="4" timescale="1" startNumber="7"/>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(3, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/seg-00007.m4s", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-00008.m4s", playlist.Segments[1].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-00009.m4s", playlist.Segments[2].Url.ToString());
+    }
+
+    // ---- SegmentTimeline eksplisit ----
+
+    [Fact]
+    public void SegmentTimeline_Eksplisit_MenghasilkanInitDanSegmenSesuaiEntri()
+    {
+        // S pertama: satu entri pada t=0. S kedua: t eksplisit 4 dengan r=2 →
+        // tiga entri pada t=4, 8, 12. Jumlah segmen dibaca dari timeline,
+        // bukan dihitung dari durasi presentasi.
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" initialization="init.mp4" startNumber="1">
+                  <SegmentTimeline>
+                    <S t="0" d="4"/>
+                    <S t="4" d="4" r="2"/>
+                  </SegmentTimeline>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(5, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/init.mp4", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-0.m4s", playlist.Segments[1].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-4.m4s", playlist.Segments[2].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-8.m4s", playlist.Segments[3].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-12.m4s", playlist.Segments[4].Url.ToString());
+    }
+
+    [Fact]
+    public void SegmentTimeline_TanpaTeksplisit_WaktuBerlanjutOtomatis()
+    {
+        // S kedua tanpa @t: waktunya melanjutkan akumulasi S sebelumnya
+        // (0, lalu 4, 6, 8 mengikuti durasi masing-masing S).
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" startNumber="1">
+                  <SegmentTimeline>
+                    <S t="0" d="4"/>
+                    <S d="2" r="2"/>
+                  </SegmentTimeline>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        // Tanpa @initialization, daftar hanya memuat segmen media.
+        Assert.Equal(4, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/seg-0.m4s", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-4.m4s", playlist.Segments[1].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-6.m4s", playlist.Segments[2].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-8.m4s", playlist.Segments[3].Url.ToString());
+    }
+
+    [Fact]
+    public void SegmentTimeline_TokenNumber_BernomorUrutDariStartNumber()
+    {
+        // Timeline juga boleh memakai $Number$: nomornya urut dari startNumber,
+        // tidak peduli berapa waktu tiap segmen.
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Number$.m4s" startNumber="10">
+                  <SegmentTimeline>
+                    <S t="0" d="4"/>
+                    <S d="4"/>
+                  </SegmentTimeline>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(2, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/seg-10.m4s", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-11.m4s", playlist.Segments[1].Url.ToString());
+    }
+
+    [Fact]
+    public void SegmentTimeline_Timescale_TidakMengubahNilaiTime()
+    {
+        // Nilai t/d di timeline sudah dalam satuan @timescale, jadi $Time$
+        // memakai angka mentahnya tanpa dibagi lagi.
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" timescale="90000" startNumber="1">
+                  <SegmentTimeline>
+                    <S t="0" d="90000"/>
+                    <S d="90000" r="1"/>
+                  </SegmentTimeline>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(3, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/seg-0.m4s", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-90000.m4s", playlist.Segments[1].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-180000.m4s", playlist.Segments[2].Url.ToString());
+    }
+
+    [Fact]
+    public void SegmentTimeline_Rnol_MenghasilkanSatuEntri()
+    {
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" initialization="init.mp4" startNumber="1">
+                  <SegmentTimeline>
+                    <S t="0" d="4" r="0"/>
+                  </SegmentTimeline>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(2, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/init.mp4", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-0.m4s", playlist.Segments[1].Url.ToString());
+    }
+
+    [Fact]
+    public void SegmentTimeline_Rnegatif_Menghasilkan_UnsupportedMedia()
+    {
+        // r negatif berarti segmen tak terbatas (siaran langsung) — tidak
+        // ada akhir daftar yang bisa diunduh sampai selesai.
+        DownloadException ex = Assert.Throws<DownloadException>(() => DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" startNumber="1">
+                  <SegmentTimeline>
+                    <S t="0" d="4" r="-1"/>
+                  </SegmentTimeline>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri));
+
+        Assert.Equal(DownloadErrorKind.UnsupportedMedia, ex.Kind);
+    }
+
+    [Fact]
+    public void SegmentTimeline_STanpaDurasi_Menghasilkan_CorruptResponse()
+    {
+        DownloadException ex = Assert.Throws<DownloadException>(() => DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" startNumber="1">
+                  <SegmentTimeline>
+                    <S t="0"/>
+                  </SegmentTimeline>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri));
+
+        Assert.Equal(DownloadErrorKind.CorruptResponse, ex.Kind);
+    }
+
+    [Fact]
+    public void SegmentTimeline_Kosong_Menghasilkan_CorruptResponse()
+    {
+        DownloadException ex = Assert.Throws<DownloadException>(() => DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" startNumber="1">
+                  <SegmentTimeline/>
+                </SegmentTemplate>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri));
+
+        Assert.Equal(DownloadErrorKind.CorruptResponse, ex.Kind);
+    }
+
+    [Fact]
+    public void SegmentTemplate_TimeTanpaTimeline_Menghasilkan_UnsupportedMedia()
+    {
+        // $Time$ hanya bisa dihitung dari timeline eksplisit; @duration saja
+        // tidak memberi nilai waktu per segmen.
+        DownloadException ex = Assert.Throws<DownloadException>(() => DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$Time$.m4s" duration="4" timescale="1" startNumber="1"/>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri));
+
+        Assert.Equal(DownloadErrorKind.UnsupportedMedia, ex.Kind);
+    }
+
+    // ---- Token template lainnya ----
+
+    [Fact]
+    public void SegmentTemplate_DollarGanda_MenjadiDolarTunggal()
+    {
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="v" bandwidth="900000" mimeType="video/mp4">
+                <SegmentTemplate media="seg-$$-$Number$.m4s" duration="4" timescale="1" startNumber="1"/>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        Assert.Equal(3, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/seg-$-1.m4s", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-$-2.m4s", playlist.Segments[1].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/seg-$-3.m4s", playlist.Segments[2].Url.ToString());
+    }
+
+    [Fact]
+    public void SegmentTemplate_KombinasiToken_SemuaTokenDiekspansi()
+    {
+        // $RepresentationID$, $Bandwidth$, dan $Number%03d$ muncul bersamaan
+        // dalam satu media template.
+        MediaPlaylist playlist = DashPlaylistParser.Parse(BungkusMpd(
+            """
+            <AdaptationSet mimeType="video/mp4">
+              <Representation id="avc1" bandwidth="1200000" mimeType="video/mp4">
+                <SegmentTemplate media="v-$RepresentationID$-$Bandwidth$-$Number%03d$.m4s" duration="5" timescale="1" startNumber="5"/>
+              </Representation>
+            </AdaptationSet>
+            """), BaseUri);
+
+        // PT10S dengan durasi 5 detik → 2 segmen.
+        Assert.Equal(2, playlist.Segments.Count);
+        Assert.Equal("http://cdn.test/dash/v-avc1-1200000-005.m4s", playlist.Segments[0].Url.ToString());
+        Assert.Equal("http://cdn.test/dash/v-avc1-1200000-006.m4s", playlist.Segments[1].Url.ToString());
     }
 }

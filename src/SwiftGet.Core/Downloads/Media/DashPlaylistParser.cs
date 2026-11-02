@@ -99,7 +99,7 @@ public static class DashPlaylistParser
         }
 
         throw new DownloadException(DownloadErrorKind.UnsupportedMedia,
-            "Skema segmentasi DASH ini belum didukung (hanya SegmentList dan SegmentTemplate $Number$).");
+            "Skema segmentasi DASH ini belum didukung (hanya SegmentList dan SegmentTemplate $Number$/$Time$).");
     }
 
     private static void ExpandTemplate(
@@ -116,11 +116,63 @@ public static class DashPlaylistParser
         long duration = (long?)template.Attribute("duration") ?? 0;
         long timescale = (long?)template.Attribute("timescale") ?? 1;
         long? endNumber = (long?)template.Attribute("endNumber");
+        string repBandwidth = ((long?)representation.Attribute("bandwidth") ?? 0)
+            .ToString(CultureInfo.InvariantCulture);
+
+        // SegmentTimeline: daftar segmen eksplisit (t = mulai waktu, d = durasi,
+        // r = pengulangan ekstra). Jumlah dan posisi tiap segmen dibaca, bukan
+        // dihitung dari durasi total — inilah bentuk yang dipakai MPD live dan
+        // MPD dengan segmen tidak beraturan.
+        XElement? timeline = template.Element(Ns + "SegmentTimeline")
+            ?? period.Element(Ns + "SegmentTimeline");
+        if (timeline is not null)
+        {
+            var entries = new List<(long Number, long Time)>();
+            long number = startNumber;
+            long time = 0;
+
+            foreach (XElement s in timeline.Elements(Ns + "S"))
+            {
+                long d = (long?)s.Attribute("d")
+                    ?? throw new DownloadException(DownloadErrorKind.CorruptResponse,
+                        "SegmentTimeline memuat S tanpa atribut d.");
+                long r = (long?)s.Attribute("r") ?? 0;
+                if (s.Attribute("t") is XAttribute tAttr && long.TryParse(tAttr.Value, out long parsed))
+                    time = parsed;
+                if (r < 0)
+                    throw new DownloadException(DownloadErrorKind.UnsupportedMedia,
+                        "SegmentTimeline dengan r negatif (segmen tak terbatas, siaran langsung) tidak didukung.");
+
+                for (long i = 0; i <= r; i++)
+                {
+                    entries.Add((number, time));
+                    number++;
+                    time += d;
+                }
+            }
+
+            if (entries.Count == 0)
+                throw new DownloadException(DownloadErrorKind.CorruptResponse,
+                    "SegmentTimeline tidak memuat segmen apa pun.");
+
+            if (!string.IsNullOrWhiteSpace(initTemplate))
+                playlist.Segments.Add(new MediaSegmentEntry(
+                    resolveIn(Expand(initTemplate, repId, 0, 0, repBandwidth))));
+
+            foreach ((long n, long t) in entries)
+                playlist.Segments.Add(new MediaSegmentEntry(
+                    resolveIn(Expand(mediaTemplate, repId, n, t, repBandwidth))));
+
+            return;
+        }
+
+        if (mediaTemplate.Contains("$Time$", StringComparison.Ordinal))
+            throw new DownloadException(DownloadErrorKind.UnsupportedMedia,
+                "$Time$ tanpa SegmentTimeline tidak bisa dihitung.");
 
         if (duration <= 0 || timescale <= 0)
             throw new DownloadException(DownloadErrorKind.UnsupportedMedia,
-                "SegmentTemplate DASH dengan SegmentTimeline belum didukung; " +
-                "hanya @duration yang bisa dihitung.");
+                "SegmentTemplate DASH tanpa @duration yang bisa dihitung.");
 
         long segmentSeconds = duration / timescale;
         long count;
@@ -141,25 +193,34 @@ public static class DashPlaylistParser
             throw new DownloadException(DownloadErrorKind.CorruptResponse,
                 "Jumlah segmen DASH terhitung nol atau negatif.");
 
-        string repBandwidth = ((long?)representation.Attribute("bandwidth") ?? 0)
-            .ToString(CultureInfo.InvariantCulture);
-
         if (!string.IsNullOrWhiteSpace(initTemplate))
             playlist.Segments.Add(new MediaSegmentEntry(
-                resolveIn(Expand(initTemplate, repId, 0, repBandwidth))));
+                resolveIn(Expand(initTemplate, repId, 0, 0, repBandwidth))));
 
         for (long n = startNumber; n < startNumber + count; n++)
         {
             playlist.Segments.Add(new MediaSegmentEntry(
-                resolveIn(Expand(mediaTemplate, repId, n, repBandwidth))));
+                resolveIn(Expand(mediaTemplate, repId, n, 0, repBandwidth))));
         }
     }
 
-    private static string Expand(string template, string repId, long number, string bandwidth) =>
-        template
+    private static readonly System.Text.RegularExpressions.Regex NumberToken =
+        new(@"\$(Number)(?:%(\d+)d)?\$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Ganti token template DASH: $Number$ dan $Number%0Nd$ (dengan pengisi
+    /// nol), $Time$, $RepresentationID$, $Bandwidth$, dan $$ sebagai tanda
+    /// dolar harfiah.
+    /// </summary>
+    private static string Expand(string template, string repId, long number, long time, string bandwidth) =>
+        NumberToken.Replace(template, m => m.Groups[2].Success
+                ? number.ToString(new string('0', int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture)),
+                    CultureInfo.InvariantCulture)
+                : number.ToString(CultureInfo.InvariantCulture))
+            .Replace("$Time$", time.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("$RepresentationID$", repId, StringComparison.Ordinal)
             .Replace("$Bandwidth$", bandwidth, StringComparison.Ordinal)
-            .Replace("$Number$", number.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("$$", "$", StringComparison.Ordinal);
 
     /// <summary>Durasi ISO 8601 ("PT1H2M3S") seperti pada atribut MPD.</summary>
