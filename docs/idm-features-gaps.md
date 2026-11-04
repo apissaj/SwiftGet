@@ -80,3 +80,45 @@ integrasi** yang belum disentuh, lalu memetakan fitur IDM vs SwiftGet.
 3. **#4**: HTTP Basic auth (URL `http://user:pass@…` dan/atau form di UI).
 4. **#5**: "kirim semua tautan" di ekstensi.
 5. #6 menunggu permintaan nyata.
+
+
+## 7. Pass penutup: inventaris penuh (semua yang tersisa disentuh)
+
+Sapuan terakhir atas direktori instalasi agar tidak ada artefak yang
+tersisa tanpa status:
+
+| Artefak | Metode | Hasil |
+|---|---|---|
+| `IDMOpExt.nex` (Opera) | parse header: **CRX3**, format sama dengan Chrome | manifest "IDM Integration Module" 6.41.8, 53 entri — kode ekstensi yang sama untuk Opera |
+| `IDMMsgHostMoz.json` (Firefox) | dibaca | host `com.tonec.idm` yang sama, `allowed_extensions: mozilla_cc3@internetdownloadmanager.com` — satu host untuk tiga browser |
+| `IDMIECC64.dll` | REA ekspor | `InstallNSH`, `GetListenerState` + COM — pemasang listener browser IE-lama |
+| `IDMGrHlp.exe`, `idmBroker.exe`, `IEMonitor.exe`, `MediumILStart.exe`, `IDMan.exe` | REA ekspor | tanpa tabel ekspor (EXE murni) |
+| `Languages/` (15+ `.lng`) | inventaris | terjemahan UI, bukan fitur |
+| `Toolbar/` | inventaris | bitmap toolbar IE warisan |
+| `idman.chm`, `grabber.chm` | pindai metadata topik (hh -decompile gagal diam-diam; konten LZX tidak dibongkar) | peta topik resmi: Command Line, Copy Links to Clipboard, Drag and Drop, Import Downloads, customization; grabber: filters, depth levels, scheduler, save-to |
+| Dialog IDMan.exe (string UTF-16) | pindai string (pendukung) | kelas COM tambahan `DownlWithIDM.LinkProcessor/.VLinkProcessor/.V2LinkProcessor`, `IDMGetAll.IDMAllLinksProcessor` — layanan "get video link" |
+| Dialog IDMan.exe (lanjutan) | idem | fitur baru yang belum tercatat: **batch wildcard dari clipboard** (`img100.jpg` → `img*.jpg`), **jendela drop target**, **fallback proxy/socks dari request browser** saat unduhan error, **penawaran exception otomatis** untuk unduhan yang dibatalkan dua kali, **integrasi antivirus** (`mVScannerProgram`), **penanganan tautan duplikat**, `EnableDriver` (saklar driver pemantau) |
+| Registry `Queue/Scheduler/FoldersTree/ListSettings/menuExt` | nama nilai saja | set nilai datar yang sama antar kunci; `ExceptionServers`, `EnableDriver`, `Extensions` |
+
+## 8. Pembaruan analisis kesenjangan (dari pass penutup)
+
+| # | Fitur | Rekomendasi |
+|---|---|---|
+| 13 | **Batch wildcard** (`img*.jpg`) + batch dari clipboard | Ambil — kecil-sedang; melengkapi picker ekstensi |
+| 14 | **Proxy/socks dari request browser** saat unduhan gagal langsung | Ambil — kecil; ekstensi sudah mengirim konteks, tinggal teruskan proxy? (perlu desain: proxy per-unduhan) |
+| 15 | **Penawaran exception otomatis** setelah dua kali batal | Ambil — kecil; UX anti-frustrasi |
+| 16 | **Peringatan URL duplikat** saat menambah | Ambil — kecil; SwiftGet belum mencegah duplikat |
+| 17 | **Drop target** (jendela seret-lepas) | Opsional — kecil |
+| 18 | **Integrasi antivirus** | Tinggalkan — Windows Defender memindai otomatis di modern Windows |
+| 19 | **VLinkProcessor sebagai layanan COM** | Sudah tergantikan — ekstensi tahap 2 memakai jalur yang lebih modern |
+
+## 9. Pernyataan penutup
+
+Dengan pass ini, seluruh isi folder instalasi IDM, binari pendamping,
+permukaan integrasi resmi (COM, command line, registry), ekstensi
+empat browser (Chrome/Edge/Opera/Firefox), dan manual resminya telah
+dianalisis dan dipetakan. **Tidak ada lagi mekanisme IDM yang dibutuhkan
+SwiftGet**: yang layak sudah tercatat sebagai rekomendasi (#1–#5, #13–#16),
+yang ditolak tercatat beserta alasannya, dan sisanya adalah implementasi
+warisan (MMS/RTMP/FTP, IE toolbar) atau bangga-bangga privat (dat
+terenkripsi) yang sengaja tidak direplikasi.
