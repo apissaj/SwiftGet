@@ -15,6 +15,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly AppSettings _settings;
     private readonly Dispatcher _dispatcher;
     private readonly HistoryStore _history = new();
+    private readonly ExclusionList _exclusions;
     private readonly CancellationTokenSource _cts = new();
 
     private string _newUrl = "";
@@ -36,9 +37,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             MaxConnectionsPerDownload = settings.MaxConnectionsPerDownload,
             MaxConnectionsPerHost = settings.MaxConnectionsPerHost,
             FfmpegPath = string.IsNullOrWhiteSpace(settings.FfmpegPath) ? null : settings.FfmpegPath,
+            CategoryFolders = settings.MoveToCategoryFolders,
         };
 
+        ExclusionList.WriteSeed(Path.Combine(AppSettings.StateDirectory, "exclusions.txt"));
+        _exclusions = new ExclusionList(Path.Combine(AppSettings.StateDirectory, "exclusions.txt"));
+
         Manager = new DownloadManager(AppSettings.StateDirectory, options);
+        Manager.SetSpeedLimit((long)settings.SpeedLimitKbPerSecond * 1024);
         Downloads = new DownloadsViewModel(Manager, dispatcher);
 
         AddCommand = new AsyncRelayCommand(AddAndStartAsync, () => !IsBusy && HasValidUrl);
@@ -235,6 +241,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
+            if (_exclusions.IsExcluded(request.Url))
+                return (false, "URL ada di daftar pengecualian");
+
             Directory.CreateDirectory(_settings.DownloadDirectory);
 
             DownloadTask task = Manager.Add(request.Url, _settings.DownloadDirectory,
@@ -494,9 +503,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Dipanggil dari pemantau clipboard saat URL baru terdeteksi.</summary>
     public void OnClipboardUrl(string url)
     {
+        if (_exclusions.IsExcluded(url))
+        {
+            StatusMessage = "URL diabaikan (ada di daftar pengecualian)";
+            return;
+        }
+
         NewUrl = url;
         StatusMessage = "URL terdeteksi di clipboard";
     }
+
+    /// <summary>Baca ulang daftar pengecualian setelah berkasnya diedit.</summary>
+    public void ReloadExclusions() => _exclusions.Reload();
+
+    /// <summary>Terapkan batas kecepatan dari pengaturan terbaru.</summary>
+    public void TerapkanBatasKecepatan() =>
+        Manager.SetSpeedLimit((long)_settings.SpeedLimitKbPerSecond * 1024);
 
     public void SetStatus(string message) => StatusMessage = message;
 

@@ -245,7 +245,7 @@ public sealed class MediaDownloadSession : IDownloadSession
     /// <summary>Ambil playlist (HLS/DASH) dan kembalikan jalur-jalurnya.</summary>
     private async Task<List<MediaPlaylist>> FetchTracksAsync(Uri url, CancellationToken ct)
     {
-        using FullResponse response = await _http.GetAsync(url, ct, _task.Referer, _task.Cookies).ConfigureAwait(false);
+        using FullResponse response = await _http.GetAsync(url, ct, _task.Referer, _task.Cookies, _task.BasicAuth).ConfigureAwait(false);
         string text = await ReadPlaylistTextAsync(response, ct).ConfigureAwait(false);
 
         string trimmed = text.TrimStart();
@@ -262,7 +262,7 @@ public sealed class MediaDownloadSession : IDownloadSession
             // Ambil kualitas terbaik yang ditawarkan; pemilihan kualitas
             // manual adalah kebijakan UI, bukan sesi.
             MediaVariant variant = HlsPlaylistParser.PickVariant(playlist);
-            using FullResponse media = await _http.GetAsync(variant.Url, ct, _task.Referer).ConfigureAwait(false);
+            using FullResponse media = await _http.GetAsync(variant.Url, ct, _task.Referer, _task.Cookies, _task.BasicAuth).ConfigureAwait(false);
             playlist = HlsPlaylistParser.Parse(
                 await ReadPlaylistTextAsync(media, ct).ConfigureAwait(false), media.FinalUri);
         }
@@ -440,6 +440,7 @@ public sealed class MediaDownloadSession : IDownloadSession
                 track.Bytes += data.Length;
                 track.Written++;
                 if (_tracks.Count == 1) _task.MediaResumeIndex = track.Written;
+                await _budget.Limiter.TungguJatahAsync(data.Length, ct).ConfigureAwait(false);
                 _speed.Record(data.Length);
                 Publish();
 
@@ -469,7 +470,7 @@ public sealed class MediaDownloadSession : IDownloadSession
                 await _budget.EnterConnectionAsync(host, ct).ConfigureAwait(false);
                 entered = true;
 
-                using FullResponse response = await _http.GetAsync(url, ct, _task.Referer, _task.Cookies).ConfigureAwait(false);
+                using FullResponse response = await _http.GetAsync(url, ct, _task.Referer, _task.Cookies, _task.BasicAuth).ConfigureAwait(false);
                 long? expected = response.Response.Content.Headers.ContentLength;
 
                 byte[] data;

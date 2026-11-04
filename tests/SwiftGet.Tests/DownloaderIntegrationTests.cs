@@ -881,6 +881,92 @@ public sealed class DownloaderIntegrationTests : IAsyncLifetime
 
         Assert.Contains(cookies, _server.LastCookie);
     }
+
+    // ---------- Folder kategori otomatis (pola IDM) ----------
+
+    [Fact]
+    public async Task FolderKategori_Aktif_FileMasukSubfolderKategori()
+    {
+        _server.Content = MakePayload(256 * 1024);
+        // Nama akhir baru diketahui setelah probe; URL sengaja tanpa ekstensi
+        // supaya tebakan awal jatuh ke Lainnya dan pemindahan folder terlihat.
+        _server.ContentDisposition = "attachment; filename=\"video-uji.mp4\"";
+        Directory.CreateDirectory(OutDir);
+
+        await using var manager = new DownloadManager(StateDir,
+            new SchedulerOptions { MaxConnectionsPerDownload = 4, CategoryFolders = true });
+        DownloadTask task = manager.Add(_server.UrlFor("ambil-data").ToString(), OutDir);
+
+        // Sebelum probe: nama tebakan tanpa ekstensi tetap di folder dasar.
+        Assert.Equal(OutDir, task.TargetDirectory);
+        Assert.Equal(OutDir, task.BaseDirectory);
+
+        await manager.StartAsync(task.Id);
+
+        Assert.Equal(DownloadState.Completed, task.State);
+        Assert.Equal(Path.Combine(OutDir, "Video"), task.TargetDirectory);
+        Assert.Equal(OutDir, task.BaseDirectory);
+
+        string finalPath = Path.Combine(OutDir, "Video", "video-uji.mp4");
+        Assert.True(File.Exists(finalPath), $"Berkas tidak ada: {finalPath}");
+        Assert.False(File.Exists(Path.Combine(OutDir, "video-uji.mp4")),
+            "Berkas tidak boleh tinggal di folder dasar saat fitur dinyalakan.");
+
+        byte[] actual = await File.ReadAllBytesAsync(finalPath);
+        Assert.Equal(_server.Content, actual);
+    }
+
+    [Fact]
+    public async Task FolderKategori_Matif_BerkasTetapDiFolderDasar()
+    {
+        _server.Content = MakePayload(64 * 1024);
+        _server.ContentDisposition = "attachment; filename=\"video-uji.mp4\"";
+        Directory.CreateDirectory(OutDir);
+
+        await using var manager = new DownloadManager(StateDir,
+            new SchedulerOptions { MaxConnectionsPerDownload = 4, CategoryFolders = false });
+        DownloadTask task = manager.Add(_server.UrlFor("ambil-data").ToString(), OutDir);
+        await manager.StartAsync(task.Id);
+
+        Assert.Equal(DownloadState.Completed, task.State);
+        Assert.Equal(OutDir, task.TargetDirectory);
+        Assert.True(File.Exists(Path.Combine(OutDir, "video-uji.mp4")));
+        Assert.False(Directory.Exists(Path.Combine(OutDir, "Video")),
+            "Fitur mati tidak boleh membuat subfolder kategori.");
+    }
+
+    [Fact]
+    public async Task FolderKategori_TargetDihitungDariNamaTebakan_SebelumProbe()
+    {
+        Directory.CreateDirectory(OutDir);
+        await using var manager = new DownloadManager(StateDir,
+            new SchedulerOptions { CategoryFolders = true });
+
+        DownloadTask video = manager.Add("https://contoh/film-favorit.mp4", OutDir);
+        Assert.Equal(Path.Combine(OutDir, "Video"), video.TargetDirectory);
+        Assert.Equal(OutDir, video.BaseDirectory);
+
+        DownloadTask tanpaEkstensi = manager.Add("https://contoh/ambil-data", OutDir);
+        Assert.Equal(OutDir, tanpaEkstensi.TargetDirectory);
+    }
+
+    [Fact]
+    public async Task FolderKategori_BaseDirectory_RoundTripManifest()
+    {
+        Directory.CreateDirectory(OutDir);
+        await using var manager = new DownloadManager(StateDir,
+            new SchedulerOptions { CategoryFolders = true });
+
+        DownloadTask task = manager.Add("https://contoh/film-favorit.mp4", OutDir);
+
+        DownloadManifest manifest = task.ToManifest();
+        Assert.Equal(OutDir, manifest.BaseDirectory);
+        Assert.Equal(Path.Combine(OutDir, "Video"), manifest.TargetDirectory);
+
+        DownloadTask pulih = DownloadTask.FromManifest(manifest);
+        Assert.Equal(OutDir, pulih.BaseDirectory);
+        Assert.Equal(Path.Combine(OutDir, "Video"), pulih.TargetDirectory);
+    }
 }
 
 

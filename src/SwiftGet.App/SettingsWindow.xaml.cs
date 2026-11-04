@@ -28,12 +28,14 @@ public partial class SettingsWindow : Window
         ConcurrentSlider.Value = settings.MaxConcurrentDownloads;
         SegmentsSlider.Value = settings.MaxConnectionsPerDownload;
         PerHostSlider.Value = settings.MaxConnectionsPerHost;
+        SpeedLimitBox.Text = settings.SpeedLimitKbPerSecond.ToString();
 
         FfmpegBox.Text = settings.FfmpegPath;
 
         WatchClipboardBox.IsChecked = settings.WatchClipboard;
         AutoStartBox.IsChecked = settings.StartDownloadsAutomatically;
         MinimizeToTrayBox.IsChecked = settings.MinimizeToTray;
+        CategoryFolderBox.IsChecked = settings.MoveToCategoryFolders;
 
         LocalEndpointBox.IsChecked = settings.EnableLocalEndpoint;
         PortBox.Text = settings.LocalEndpointPort.ToString();
@@ -79,12 +81,15 @@ public partial class SettingsWindow : Window
         _settings.MaxConcurrentDownloads = (int)ConcurrentSlider.Value;
         _settings.MaxConnectionsPerDownload = (int)SegmentsSlider.Value;
         _settings.MaxConnectionsPerHost = (int)PerHostSlider.Value;
+        if (int.TryParse(SpeedLimitBox.Text.Trim(), out int limit))
+            _settings.SpeedLimitKbPerSecond = limit;
 
         _settings.FfmpegPath = FfmpegBox.Text.Trim();
 
         _settings.WatchClipboard = WatchClipboardBox.IsChecked == true;
         _settings.StartDownloadsAutomatically = AutoStartBox.IsChecked == true;
         _settings.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
+        _settings.MoveToCategoryFolders = CategoryFolderBox.IsChecked == true;
 
         _settings.EnableLocalEndpoint = LocalEndpointBox.IsChecked == true;
         // Port yang tidak bisa diurai kembali ke nilai lama, bukan 0.

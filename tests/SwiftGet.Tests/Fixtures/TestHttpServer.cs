@@ -57,6 +57,12 @@ public sealed class TestHttpServer : IAsyncDisposable
     /// <summary>Bila true, semua permintaan dijawab 404.</summary>
     public bool NotFound { get; set; }
 
+    /// <summary>
+    /// Bila diisi (format "user:sandi"), semua permintaan tanpa header
+    /// Authorization Basic yang cocok dijawab 401 + WWW-Authenticate.
+    /// </summary>
+    public string? RequireBasicAuth { get; set; }
+
     /// <summary>Jumlah permintaan GET yang diterima (untuk memverifikasi paralelisme).</summary>
     public int GetRequestCount;
 
@@ -133,6 +139,35 @@ public sealed class TestHttpServer : IAsyncDisposable
     /// cookie yang sama pada semua permintaan, jadi satu nilai cukup.
     /// </summary>
     public string? LastCookie { get; private set; }
+
+    /// <summary>
+    /// Header Authorization dari permintaan GET/HEAD terakhir; null bila
+    /// permintaan terakhir tidak membawanya. Membuktikan auth preemptive:
+    /// permintaan pertama pun sudah harus membawa kredensial.
+    /// </summary>
+    public string? LastAuthorization { get; private set; }
+
+    /// <summary>Catat header Authorization permintaan GET/HEAD yang baru masuk.</summary>
+    private void CatatAuthorization(HttpListenerRequest req)
+    {
+        if (req.HttpMethod is not ("GET" or "HEAD")) return;
+
+        LastAuthorization = req.Headers["Authorization"];
+    }
+
+    /// <summary>
+    /// Benar bila server tidak mewajibkan auth, atau permintaan membawa
+    /// header Authorization Basic yang tepat sama dengan kredensial yang
+    /// ditunggu (diuji tanpa tantangan 401 lebih dulu).
+    /// </summary>
+    private bool AuthLolos(HttpListenerRequest req)
+    {
+        if (RequireBasicAuth is null) return true;
+
+        string diharapkan = "Basic " + Convert.ToBase64String(
+            Encoding.UTF8.GetBytes(RequireBasicAuth));
+        return string.Equals(req.Headers["Authorization"], diharapkan, StringComparison.Ordinal);
+    }
 
     /// <summary>Catat header Referer permintaan GET/HEAD yang baru masuk.</summary>
     private void CatatReferer(HttpListenerRequest req)
@@ -260,6 +295,17 @@ public sealed class TestHttpServer : IAsyncDisposable
 
             CatatReferer(req);
             CatatCookie(req);
+            CatatAuthorization(req);
+
+            // Auth diperiksa paling awal: 401 tidak dihitung sebagai GET data
+            // dan tidak menyentuh routing/Range apa pun.
+            if (!AuthLolos(req))
+            {
+                res.StatusCode = 401;
+                res.AddHeader("WWW-Authenticate", "Basic realm=\"swiftget\"");
+                res.Close();
+                return;
+            }
 
             if (NotFound)
             {

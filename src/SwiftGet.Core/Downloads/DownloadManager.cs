@@ -84,9 +84,26 @@ public sealed class DownloadManager : IAsyncDisposable
             throw new DownloadException(DownloadErrorKind.InvalidUrl,
                 $"Hanya http/https yang didukung, bukan '{uri.Scheme}'.");
 
-        var task = new DownloadTask(Guid.NewGuid().ToString("N"), uri, targetDirectory, fileName);
+        var task = new DownloadTask(Guid.NewGuid().ToString("N"), uri, targetDirectory, fileName)
+        {
+            BaseDirectory = targetDirectory,
+        };
+        // Nama ditebak dari URL di konstruktor; folder kategori dihitung dari nama itu.
+        task.TargetDirectory = FileCategories.ResolveFolder(
+            targetDirectory, task.FileName, _options.CategoryFolders);
         if (!string.IsNullOrWhiteSpace(referer)) task.Referer = referer;
         if (!string.IsNullOrWhiteSpace(cookies)) task.Cookies = cookies;
+
+        // Kredensial dalam URL (http://user:pass@host/...) menjadi Basic auth
+        // preemptive — server yang meminta autentikasi tidak perlu round-trip 401.
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+        {
+            string[] bagian = uri.UserInfo.Split(':', 2);
+            string user = Uri.UnescapeDataString(bagian[0]);
+            string pass = bagian.Length > 1 ? Uri.UnescapeDataString(bagian[1]) : "";
+            task.BasicAuth = "Basic " + Convert.ToBase64String(
+                System.Text.Encoding.UTF8.GetBytes($"{user}:{pass}"));
+        }
         _tasks[task.Id] = task;
         return task;
     }
@@ -140,7 +157,8 @@ public sealed class DownloadManager : IAsyncDisposable
                 ffmpegPath: _options.FfmpegPath);
 
         return new DownloadSession(task, _http, _budget, _store,
-            _options.MaxConnectionsPerDownload, retry: null, onProgress);
+            _options.MaxConnectionsPerDownload, retry: null, onProgress,
+            categoryFolders: _options.CategoryFolders);
     }
 
     public void Pause(string id)
@@ -166,6 +184,12 @@ public sealed class DownloadManager : IAsyncDisposable
     {
         Cancel(id);
     }
+
+    /// <summary>
+    /// Pasang batas kecepatan total (byte/detik) untuk semua sesi; 0 berarti
+    /// tanpa batas. Dipanggil ulang saat pengguna mengubah pengaturan.
+    /// </summary>
+    public void SetSpeedLimit(long bytesPerSecond) => _budget.Limiter.SetLimit(bytesPerSecond);
 
     public DownloadProgress? GetProgress(string id) =>
         _tasks.TryGetValue(id, out DownloadTask? task) ? task.Snapshot() : null;

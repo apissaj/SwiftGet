@@ -24,6 +24,12 @@ public sealed class SchedulerOptions
     /// Kosong berarti dicari di folder aplikasi lalu PATH.
     /// </summary>
     public string? FfmpegPath { get; init; }
+
+    /// <summary>
+    /// Pindahkan berkas selesai ke subfolder per kategori di bawah folder
+    /// unduhan (Video, Arsip, dst) — pola kategori IDM.
+    /// </summary>
+    public bool CategoryFolders { get; init; }
 }
 
 /// <summary>
@@ -52,6 +58,11 @@ public sealed class ConnectionBudget : IDisposable
     }
 
     public SchedulerOptions Options => _options;
+
+    /// <summary>
+    /// Pembatas kecepatan total yang dibagi semua sesi (Speed Limiter).
+    /// </summary>
+    public SpeedLimiter Limiter { get; } = new();
 
     /// <summary>Ambil izin untuk satu file yang akan mulai diunduh.</summary>
     public Task EnterDownloadAsync(CancellationToken ct) => _globalDownloads.WaitAsync(ct);

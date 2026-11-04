@@ -482,6 +482,8 @@ public partial class MainWindow : Window
 
         _settings.Save();
         _clipboard.Enabled = _settings.WatchClipboard;
+        _viewModel.ReloadExclusions();
+        _viewModel.TerapkanBatasKecepatan();
         ApplyLocalEndpointSetting();
         _viewModel.SetStatus("Pengaturan disimpan, berlaku untuk unduhan berikutnya");
     }

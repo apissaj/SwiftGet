@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
 
-namespace SwiftGet.App.Infrastructure;
+namespace SwiftGet.Core.Downloads;
 
 /// <summary>
 /// Kategori unduhan yang diturunkan dari ekstensi nama berkas.
@@ -84,4 +84,17 @@ public static class FileCategories
 
     /// <summary>Klasifikasi sekaligus labelnya, untuk dipakai UI.</summary>
     public static string LabelOf(string? fileName) => Label(Classify(fileName));
+
+    /// <summary>
+    /// Folder tujuan untuk satu berkas: folder dasar, atau subfolder
+    /// kategori bila fitur dinyalakan dan jenisnya bukan Lainnya — pola
+    /// kategori IDM: berkas selesai tinggal di folder jenisnya.
+    /// </summary>
+    public static string ResolveFolder(string baseDirectory, string fileName, bool enabled)
+    {
+        if (!enabled) return baseDirectory;
+        DownloadCategory category = Classify(fileName);
+        if (category == DownloadCategory.Lainnya) return baseDirectory;
+        return Path.Combine(baseDirectory, Label(category));
+    }
 }

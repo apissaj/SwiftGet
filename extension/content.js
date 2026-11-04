@@ -261,6 +261,62 @@
         box.appendChild(row);
       }
 
+      // Tautan berkas di DOM (dimensi kedua, ala IDM "Download all links"):
+      // a[href] ber-ekstensi media yang belum tercakup kandidat jaringan.
+      const MEDIA_EXT = /\.(mp4|m4v|mkv|webm|mov|avi|flv|ts|mp3|m4a|wav|flac|ogg|opus|m3u8|mpd|zip|rar|7z|tar|gz|xz|iso|pdf|docx?|xlsx?|pptx?|epub|exe|msi|msix|apk|dmg)([?#]|$)/i;
+      const domLinks = [];
+      const terlihat = new Set(candidates.keys());
+      document.querySelectorAll("a[href]").forEach((a) => {
+        const url = a.href;
+        if (!url || !MEDIA_EXT.test(url) || isOurEndpoint(url) || terlihat.has(url)) return;
+        terlihat.add(url);
+        domLinks.push(url);
+      });
+
+      if (domLinks.length) {
+        const head2 = document.createElement("div");
+        head2.className = "swiftget-picker-head";
+        head2.textContent = `Tautan berkas di halaman — ${domLinks.length}`;
+        head2.style.marginTop = "10px";
+        box.appendChild(head2);
+
+        const kirimSemua = document.createElement("a");
+        kirimSemua.className = "swiftget-picker-row swiftget-send-all";
+        kirimSemua.textContent = `Kirim semua (${domLinks.length})`;
+        kirimSemua.href = "#";
+        kirimSemua.addEventListener("click", async (ev) => {
+          ev.preventDefault();
+          kirimSemua.style.pointerEvents = "none";
+          for (const url of domLinks) {
+            const reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer: location.href });
+            if (reply && reply.ok) candidates.set(url, "terkirim");
+          }
+          updateBadge();
+          closePicker();
+        });
+        box.appendChild(kirimSemua);
+
+        for (const url of domLinks.slice(0, 100)) {
+          const row = document.createElement("a");
+          row.className = "swiftget-picker-row";
+          row.textContent = url;
+          row.href = "#";
+          row.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            row.textContent = "Mengirim…";
+            const reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer: location.href });
+            row.textContent = (reply && reply.ok) ? `✓ ${url}` : ((reply && reply.message) || "Gagal mengirim");
+          });
+          box.appendChild(row);
+        }
+        if (domLinks.length > 100) {
+          const lagi = document.createElement("div");
+          lagi.className = "swiftget-picker-head";
+          lagi.textContent = `… dan ${domLinks.length - 100} tautan lain`;
+          box.appendChild(lagi);
+        }
+      }
+
       const close = document.createElement("a");
       close.className = "swiftget-picker-close";
       close.textContent = "Tutup";

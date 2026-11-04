@@ -24,6 +24,7 @@ public sealed class DownloadTask
         Id = id;
         Url = url;
         TargetDirectory = targetDirectory;
+        BaseDirectory = targetDirectory;
         FileName = fileName ?? GuessFileName(url);
     }
 
@@ -34,6 +35,10 @@ public sealed class DownloadTask
     public string TargetDirectory { get; internal set; }
 
     public string FileName { get; internal set; }
+
+    /// <summary>Folder dasar yang diminta pengguna; TargetDirectory bisa
+    /// jadi subfolder kategori di bawahnya.</summary>
+    public string BaseDirectory { get; internal set; }
 
     public long? TotalLength { get; internal set; }
 
@@ -71,6 +76,13 @@ public sealed class DownloadTask
     /// mewajibkan sesi; resume memakai nilai yang sama.
     /// </summary>
     public string? Cookies { get; internal set; }
+
+    /// <summary>
+    /// Header Authorization preemptive (Basic) dari kredensial di URL
+    /// (http://pengguna:sandi@host/berkas). Ikut tersimpan di manifest —
+    /// berarti manifest berisi kredensial; itu konsekuensi yang didokumentasikan.
+    /// </summary>
+    public string? BasicAuth { get; internal set; }
 
     /// <summary>
     /// Keadaan resume unduhan multi-jalur DASH:
@@ -261,6 +273,7 @@ public sealed class DownloadTask
                 FinalUrl = FinalUri?.ToString(),
                 FileName = FileName,
                 TargetDirectory = TargetDirectory,
+                BaseDirectory = BaseDirectory,
                 TotalLength = TotalLength,
                 SupportsRanges = SupportsRanges,
                 ETag = ETag,
@@ -272,6 +285,7 @@ public sealed class DownloadTask
                 MediaSegmentCount = MediaSegmentCount,
                 Referer = Referer,
                 Cookies = Cookies,
+                BasicAuth = BasicAuth,
                 MediaTracksState = MediaTracksState,
                 State = _state,
                 LastError = _lastError,
@@ -295,6 +309,7 @@ public sealed class DownloadTask
             manifest.TargetDirectory,
             manifest.FileName)
         {
+            BaseDirectory = manifest.BaseDirectory,
             TotalLength = manifest.TotalLength,
             SupportsRanges = manifest.SupportsRanges,
             ETag = manifest.ETag,
@@ -307,6 +322,7 @@ public sealed class DownloadTask
             MediaSegmentCount = manifest.MediaSegmentCount,
             Referer = manifest.Referer,
             Cookies = manifest.Cookies,
+            BasicAuth = manifest.BasicAuth,
             MediaTracksState = manifest.MediaTracksState,
         };
 

@@ -31,6 +31,7 @@ public sealed class DownloadSession : IDownloadSession
     private readonly ManifestStore _store;
     private readonly RetryPolicy _retry;
     private readonly int _maxConnections;
+    private readonly bool _categoryFolders;
     private readonly Action<DownloadProgress>? _onProgress;
 
     private readonly CancellationTokenSource _cts = new();
@@ -58,7 +59,8 @@ public sealed class DownloadSession : IDownloadSession
         ManifestStore store,
         int maxConnections,
         RetryPolicy? retry = null,
-        Action<DownloadProgress>? onProgress = null)
+        Action<DownloadProgress>? onProgress = null,
+        bool categoryFolders = false)
     {
         _task = task ?? throw new ArgumentNullException(nameof(task));
         _http = http ?? throw new ArgumentNullException(nameof(http));
@@ -67,6 +69,7 @@ public sealed class DownloadSession : IDownloadSession
         _maxConnections = Math.Max(1, maxConnections);
         _retry = retry ?? new RetryPolicy();
         _onProgress = onProgress;
+        _categoryFolders = categoryFolders;
     }
 
     public DownloadTask Task => _task;
@@ -97,7 +100,7 @@ public sealed class DownloadSession : IDownloadSession
                 _task.SetState(DownloadState.Probing);
                 PublishProgress();
 
-                ProbeResult probe = await _http.ProbeAsync(_task.Url, ct, referer: _task.Referer, cookies: _task.Cookies).ConfigureAwait(false);
+                ProbeResult probe = await _http.ProbeAsync(_task.Url, ct, referer: _task.Referer, cookies: _task.Cookies, authorization: _task.BasicAuth).ConfigureAwait(false);
 
                 ApplyProbe(probe);
 
@@ -178,6 +181,12 @@ public sealed class DownloadSession : IDownloadSession
             _task.FileName = suggested;
         }
 
+        // Nama akhir menentukan kategori; folder tujuan dihitung ulang dan
+        // dibuat sebelum byte pertama ditulis.
+        _task.TargetDirectory = FileCategories.ResolveFolder(
+            _task.BaseDirectory, _task.FileName, _categoryFolders);
+        Directory.CreateDirectory(_task.TargetDirectory);
+
         var segments = probe.CanSegment
             ? SegmentPlanner.Plan(probe.ContentLength!.Value, _maxConnections)
             : new List<Segment> { new(0, 0, probe.ContentLength ?? 0) };
@@ -190,7 +199,7 @@ public sealed class DownloadSession : IDownloadSession
         // Untuk unduhan yang belum pernah jalan, tidak ada validator tersimpan.
         if (_task.ETag is null && _task.LastModifiedRaw is null) return true;
 
-        ProbeResult probe = await _http.ProbeAsync(_task.Url, ct, referer: _task.Referer, cookies: _task.Cookies).ConfigureAwait(false);
+        ProbeResult probe = await _http.ProbeAsync(_task.Url, ct, referer: _task.Referer, cookies: _task.Cookies, authorization: _task.BasicAuth).ConfigureAwait(false);
 
         if (_task.TotalLength is not null && probe.ContentLength is not null &&
             _task.TotalLength != probe.ContentLength)
@@ -424,7 +433,7 @@ public sealed class DownloadSession : IDownloadSession
                 "Server tidak mendukung Range; segmen tambahan tidak bisa dijalankan.");
 
         using RangedResponse response = await _http
-            .GetRangeAsync(_task.Url, from, toExclusive - 1, ct, _task.Referer, _task.Cookies)
+            .GetRangeAsync(_task.Url, from, toExclusive - 1, ct, _task.Referer, _task.Cookies, _task.BasicAuth)
             .ConfigureAwait(false);
 
         if (!response.RangeHonored && !_task.SupportsRanges)
@@ -480,6 +489,7 @@ public sealed class DownloadSession : IDownloadSession
             await part.WriteAtAsync(writeOffset, buffer.AsMemory(0, read), ct).ConfigureAwait(false);
 
             bool segmentDone = _task.Advance(segmentIndex, read);
+            await _budget.Limiter.TungguJatahAsync(read, ct).ConfigureAwait(false);
             PublishProgress();
             await SaveManifestThrottledAsync(ct).ConfigureAwait(false);
 
@@ -492,6 +502,8 @@ public sealed class DownloadSession : IDownloadSession
         PartFile part = _partFile ?? throw new InvalidOperationException("Tidak ada file sementara.");
         await part.FlushAsync(ct).ConfigureAwait(false);
 
+        // Resume bisa berjalan sebelum ApplyProbe membuat subfolder kategori.
+        Directory.CreateDirectory(_task.TargetDirectory);
         part.CommitAs(_task.FinalPath, overwrite: true);
         _partFile = null;
 

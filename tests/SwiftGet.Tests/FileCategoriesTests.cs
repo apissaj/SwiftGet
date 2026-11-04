@@ -1,4 +1,5 @@
 using SwiftGet.App.Infrastructure;
+using SwiftGet.Core.Downloads;
 using Xunit;
 
 namespace SwiftGet.Tests;
@@ -161,5 +162,54 @@ public sealed class FileCategoriesTests
     public void LabelOf_GabunganKlasifikasiDanLabel_Selaras(string? fileName, string expected)
     {
         Assert.Equal(expected, FileCategories.LabelOf(fileName));
+    }
+
+    // ---- ResolveFolder: folder tujuan per kategori (pola IDM) ----
+
+    [Theory]
+    [InlineData("film.mp4", "Video")]
+    [InlineData("lagu.wav", "Audio")]
+    [InlineData("foto.png", "Gambar")]
+    [InlineData("buku.pdf", "Dokumen")]
+    [InlineData("arsip.zip", "Arsip")]
+    [InlineData("pasang.exe", "Program")]
+    public void ResolveFolder_Diaktifkan_MasukSubfolderKategori(string fileName, string label)
+    {
+        Assert.Equal(Path.Combine(@"C:\unduh", label),
+            FileCategories.ResolveFolder(@"C:\unduh", fileName, enabled: true));
+    }
+
+    [Theory]
+    [InlineData("berkas")]         // tanpa ekstensi sama sekali
+    [InlineData("berkas.")]        // titik saja
+    [InlineData("berkas.xyz")]     // ekstensi tidak dikenal
+    [InlineData(".gitignore")]     // GetExtension menghasilkan ""
+    [InlineData("")]
+    public void ResolveFolder_Diaktifkan_KategoriLainnya_TetapDiFolderDasar(string fileName)
+    {
+        // Lainnya tidak dibuatkan subfoldernya: mengunduh macam-macam berkas
+        // tak dikenal tidak boleh menabur folder baru di folder unduhan.
+        Assert.Equal(@"C:\unduh", FileCategories.ResolveFolder(@"C:\unduh", fileName, enabled: true));
+    }
+
+    [Theory]
+    [InlineData("film.mp4")]
+    [InlineData("berkas")]
+    [InlineData("")]
+    public void ResolveFolder_Dimatikan_SelaluFolderDasar(string fileName)
+    {
+        Assert.Equal(@"C:\unduh", FileCategories.ResolveFolder(@"C:\unduh", fileName, enabled: false));
+    }
+
+    [Fact]
+    public void ResolveFolder_NamaTanpaEkstensi_MenghasilkanFolderDasarBersih()
+    {
+        // Nama tebakan tanpa ekstensi (mis. dari URL /ambil-data) harus
+        // mengembalikan folder dasar apa adanya, tanpa pemisah di ujung —
+        // supaya Path.Combine di FinalPath tidak menumpuk pemisah.
+        string hasil = FileCategories.ResolveFolder(@"C:\unduh", "ambil-data", enabled: true);
+        Assert.Equal(@"C:\unduh", hasil);
+        Assert.False(hasil.EndsWith(Path.DirectorySeparatorChar) || hasil.EndsWith(Path.AltDirectorySeparatorChar),
+            "Folder dasar tidak boleh diberi pemisah di ujung.");
     }
 }

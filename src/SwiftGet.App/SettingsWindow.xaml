@@ -69,6 +69,10 @@
                                 ValueChanged="PerHost_Changed" Margin="0,4,0,10" />
                         <TextBlock x:Name="PerHostLabel" Style="{StaticResource Caption}" />
 
+                        <TextBlock Text="Batas kecepatan total (KB/detik, 0 = tanpa batas)"
+                                   Style="{StaticResource Body}" Margin="0,12,0,0" />
+                        <TextBox x:Name="SpeedLimitBox" Style="{StaticResource UrlTextBox}" Margin="0,4,0,0" />
+
                         <TextBlock Text="ffmpeg (untuk menggabungkan DASH video+audio)"
                                    Style="{StaticResource Body}" Margin="0,12,0,0" />
                         <TextBox x:Name="FfmpegBox" Style="{StaticResource UrlTextBox}" Margin="0,4,0,0" />
@@ -86,6 +90,8 @@
                         <CheckBox x:Name="AutoStartBox" Content="Mulai unduhan otomatis saat URL terdeteksi"
                                   Margin="0,0,0,8" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <CheckBox x:Name="MinimizeToTrayBox" Content="Tutup jendela ke tray (unduhan tetap berjalan)"
+                                  Margin="0,0,0,8" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <CheckBox x:Name="CategoryFolderBox" Content="Pindahkan berkas selesai ke folder per kategori"
                                   Margin="0,0,0,12" Foreground="{DynamicResource TextPrimaryBrush}" />
 
                         <TextBlock Text="Integrasi browser" Style="{StaticResource Heading}" Margin="0,0,0,6" />

@@ -75,6 +75,11 @@ integrasi** yang belum disentuh, lalu memetakan fitur IDM vs SwiftGet.
 
 ## 6. Rekomendasi urutan (Rilis 2.x)
 
+> **Pembaruan**: #1–#5 telah **diimplementasikan seluruhnya** (paket commit
+> pascarian 2.2.0) — folder kategori, exclusion list, speed limiter,
+> HTTP Basic auth, dan "kirim semua tautan" di ekstensi. #6 (scheduler)
+> menunggu permintaan nyata.
+
 1. **#1 + #2** (satu commit): kategori → folder otomatis + exclusion list.
 2. **#3**: speed limiter.
 3. **#4**: HTTP Basic auth (URL `http://user:pass@…` dan/atau form di UI).

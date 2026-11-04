@@ -37,6 +37,9 @@ selain .NET sendiri.
 - Panel periksa: peta bagian, grafik kecepatan 30 detik, rincian koneksi dan
   validator; menjadi lapisan dengan perangkap fokus di jendela sempit.
 - Riwayat unduhan selesai antar sesi dan kategori berkas otomatis.
+- Pola kategori IDM: berkas selesai dipindah ke folder per kategori, bisa
+  dimatikan di pengaturan; batas kecepatan total (speed limiter); HTTP
+  Basic auth lewat URL berkredensial; daftar pengecualian tangkapan.
 - Bookmarklet: endpoint lokal di `127.0.0.1` menerima URL dari browser
   (mati secara bawaan, dinyalakan di pengaturan).
 - Deteksi URL dari clipboard, tray dengan aksi cepat, satu instance,

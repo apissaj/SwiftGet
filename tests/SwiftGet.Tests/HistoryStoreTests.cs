@@ -1,4 +1,5 @@
 using SwiftGet.App.Infrastructure;
+using SwiftGet.Core.Downloads;
 using Xunit;
 
 namespace SwiftGet.Tests;

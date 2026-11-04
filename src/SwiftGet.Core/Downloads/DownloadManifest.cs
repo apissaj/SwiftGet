@@ -25,8 +25,11 @@ public sealed class DownloadManifest
 
     public string FileName { get; set; } = "";
 
-    /// <summary>Folder tujuan akhir.</summary>
-    public string TargetDirectory { get; set; } = "";
+    /// <summary>Folder tujuan akhir (bisa subfolder kategori).</summary>
+    public string TargetDirectory { get; set; }
+
+    /// <summary>Folder dasar yang diminta pengguna.</summary>
+    public string BaseDirectory { get; set; } = "";
 
     public long? TotalLength { get; set; }
 
@@ -54,6 +57,9 @@ public sealed class DownloadManifest
 
     /// <summary>Cookie halaman asal (ekstensi browser), dikirim ulang saat resume.</summary>
     public string? Cookies { get; set; }
+
+    /// <summary>Header Authorization Basic preemptive (dari userinfo URL).</summary>
+    public string? BasicAuth { get; set; }
 
     /// <summary>
     /// Keadaan resume unduhan multi-jalur DASH:

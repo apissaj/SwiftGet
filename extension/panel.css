@@ -114,3 +114,14 @@
   color: #1a1a1a;
   text-decoration: none;
 }
+.swiftget-picker-row.swiftget-send-all {
+  font-weight: 600;
+  color: #fff;
+  background: #1f7a4a;
+  border-radius: 6px;
+  text-align: center;
+  padding: 7px;
+  border-top: 0;
+  margin-bottom: 4px;
+}
+.swiftget-picker-row.swiftget-send-all:hover { background: #17603a; }

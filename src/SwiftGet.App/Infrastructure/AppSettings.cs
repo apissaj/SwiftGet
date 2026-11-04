@@ -46,6 +46,15 @@ public sealed class AppSettings
     public string LocalEndpointToken { get; set; } = "";
 
     /// <summary>
+    /// Pindahkan berkas selesai ke subfolder per kategori di bawah folder
+    /// unduhan (Video, Arsip, dst).
+    /// </summary>
+    public bool MoveToCategoryFolders { get; set; }
+
+    /// <summary>Batas kecepatan total dalam KB/detik; 0 berarti tanpa batas.</summary>
+    public int SpeedLimitKbPerSecond { get; set; }
+
+    /// <summary>
     /// Tema terakhir yang dipilih pengguna. Null berarti ikuti tema Windows
     /// pada saat aplikasi dijalankan.
     /// </summary>
@@ -110,6 +119,7 @@ public sealed class AppSettings
         MaxConnectionsPerDownload = Math.Clamp(MaxConnectionsPerDownload, 1, 32);
         MaxConnectionsPerHost = Math.Clamp(MaxConnectionsPerHost, 1, 32);
         LocalEndpointPort = Math.Clamp(LocalEndpointPort, 1024, 65535);
+        SpeedLimitKbPerSecond = Math.Clamp(SpeedLimitKbPerSecond, 0, 1_048_576);
 
         if (string.IsNullOrWhiteSpace(DownloadDirectory))
         {
