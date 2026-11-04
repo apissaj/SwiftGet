@@ -36,6 +36,29 @@
     }
   }
 
+  // Kandidat googlevideo membawa metadata di query-nya: itag (varian),
+  // mime (video/audio), expire (unix detik). Dipakai untuk label dan
+  // penyaring kedaluwarsa di picker — URL kedaluwarsa pasti 403.
+  function infoKandidat(url) {
+    try {
+      const u = new URL(url);
+      const itag = u.searchParams.get("itag");
+      const mime = u.searchParams.get("mime");
+      const expire = Number(u.searchParams.get("expire"));
+      const jenis = mime
+        ? (mime.startsWith("video") ? "video" : mime.startsWith("audio") ? "audio" : null)
+        : null;
+      return {
+        itag,
+        jenis,
+        kedaluwarsa: expire > 0 && expire * 1000 <= Date.now(),
+        waktu: expire > 0 ? new Date(expire * 1000).toLocaleString() : null,
+      };
+    } catch (ex) {
+      return null;
+    }
+  }
+
   window.addEventListener("message", (e) => {
     // Sumber harus window yang sama (dunia halaman) dan penanda khusus;
     // halaman lain tidak bisa memalsukan pesan lintas-origin ini.
@@ -259,13 +282,28 @@
       head.textContent = `Kirim ke SwiftGet — ${candidates.size} kandidat`;
       box.appendChild(head);
 
-      for (const [url, status] of candidates) {
+      const pasangan = [...candidates]
+        .map(([url, status]) => ({ url, status, info: infoKandidat(url) }))
+        .sort((a, b) => Number(a.info?.kedaluwarsa ?? false) - Number(b.info?.kedaluwarsa ?? false));
+
+      for (const { url, status, info } of pasangan) {
         const row = document.createElement("a");
-        row.className = "swiftget-picker-row" + (status === "terkirim" ? " swiftget-sent" : "");
-        row.textContent = status === "terkirim" ? `✓ ${url}` : url;
+        const kadaluarsa = info?.kedaluwarsa === true;
+        const label = info
+          ? [info.jenis, info.itag ? `itag ${info.itag}` : null,
+             kadaluarsa ? `KEDALUWARSA (${info.waktu})` : null]
+              .filter(Boolean).join(" · ") + "  —  " + url
+          : url;
+        row.className = "swiftget-picker-row"
+          + (status === "terkirim" || kadaluarsa ? " swiftget-sent" : "");
+        row.textContent = status === "terkirim" ? `✓ ${url}` : label;
         row.href = "#";
         row.addEventListener("click", async (ev) => {
           ev.preventDefault();
+          if (kadaluarsa) {
+            row.textContent = "URL kedaluwarsa — mainkan videonya lagi untuk URL baru";
+            return;
+          }
           row.textContent = "Mengirim…";
           const reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer: location.href });
           if (reply && reply.ok) {
