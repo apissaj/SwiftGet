@@ -1,18 +1,34 @@
 {
   "versi": 1,
-
   "$dokumen": "Database per situs (tahap 3, pola IDM: konfigurasi situs dikirim terpisah dari logika). hosts dicocokkan akhiran terhadap hostname halaman; responseRegexes adalah regex JavaScript (string, flag ditambahkan 'g' otomatis) yang dijalankan pada teks respons XHR/fetch — grup 1 dipakai bila ada, selain itu seluruh kecocokan; hasil dianggap URL media tanpa cek ekstensi. selectors dicadangkan untuk pemindaian DOM per situs (belum dipakai). Tambahkan situs baru lewat PR; jangan memasukkan logika khusus ke berkas skrip.",
-
   "sites": [
     {
-      "hosts": ["vimeo.com", "player.vimeo.com"],
+      "hosts": [
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtube-nocookie.com"
+      ],
+      "ignoreImages": true,
+      "responseRegexes": [
+        "\"(https?:[^\\\"]*googlevideo\\.com/videoplayback[^\\\"]*)\""
+      ],
+      "note": "Video YouTube: URL videoplayback ada di JSON player (blob: tak bisa diunduh). Thumbnail i.ytimg.com sengaja diabaikan."
+    },
+    {
+      "hosts": [
+        "vimeo.com",
+        "player.vimeo.com"
+      ],
       "responseRegexes": [
         "\"url\"\\s*:\\s*\"(https?:[^\\\"]+\\.(?:mp4|m3u8)[^\"]*)\""
       ],
       "note": "URL progresif tersembunyi di config JSON; sering ter-escape \\/ (ditangani juga secara generik)."
     },
     {
-      "hosts": ["127.0.0.1"],
+      "hosts": [
+        "127.0.0.1"
+      ],
       "responseRegexes": [
         "\"file\"\\s*:\\s*\"([^\"]+)\""
       ],

@@ -13,6 +13,7 @@
   const MAX_PER_RESPONSE = 10;       // batas kandidat per respons
   const MEDIA = /\.(mp4|m4v|mkv|webm|mov|avi|flv|ts|mp3|m4a|wav|flac|ogg|opus|m3u8|mpd|zip|rar|7z|tar|gz|xz|iso|pdf|docx?|xlsx?|pptx?|epub|exe|msi|msix|apk|dmg)([?#]|$)/i;
   const URL_PATTERN = /https?:\/\/[^\s"'<>()\\]+/g;
+  const BSC = String.fromCharCode(92); // karakter backslash, tanpa literal
 
   const seen = new Set();
   let total = 0;
@@ -90,7 +91,7 @@
 
     // URL di dalam JSON sering ditulis dengan slash ter-escape (\/) dan
     // lolos dari regex biasa; pindai sekali lagi salinan yang diluruskan.
-    if (text.includes("\\/")) scanText(text.replace(/\\\//g, "/"), fresh);
+    if (text.includes(BSC + "/") || text.includes(BSC + "u0026")) scanText(text.replace(new RegExp(BSC + "/", "g"), "/").replace(new RegExp(BSC + "u0026", "g"), "&"), fresh);
 
     emit(fresh);
   }

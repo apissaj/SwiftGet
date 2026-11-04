@@ -12,6 +12,7 @@
   // supaya tidak ada kandidat yang hilang; segala hal yang butuh DOM
   // ditunda sampai dokumen siap.
   const candidates = new Map(); // url -> "baru" | "terkirim"
+  let abaikanGambar = false;    // per situs (sites.json), mis. YouTube
   let badge = null;
   let picker = null;
   let domSiap = false;
@@ -63,6 +64,7 @@
       const host = location.hostname;
       const situs = (db.sites || []).find((s) =>
         (s.hosts || []).some((h) => host === h || host.endsWith("." + h)));
+      abaikanGambar = !!(situs && situs.ignoreImages);
       window.postMessage({
         __swiftget__: true, kind: "config",
         responseRegexes: (situs && situs.responseRegexes) || [],
@@ -134,14 +136,23 @@
       current = el;
 
       const url = resolveUrl(el);
-      if (!url || url.startsWith("data:") || url.startsWith("blob:")) {
-        // Blob = Media Source Extensions: sumber asli tidak pernah diberikan
-        // ke browser dalam bentuk URL yang bisa diunduh ulang.
-        label.textContent = url && url.startsWith("blob:")
-          ? "Stream MSE (blob:) tidak bisa diunduh langsung"
-          : "Sumber media tidak dikenal";
+      if (!url || url.startsWith("data:")) {
+        label.textContent = "Sumber media tidak dikenal";
         panel.classList.add("swiftget-status", "swiftget-error");
-        panel.classList.remove("swiftget-visible");
+        panel.classList.add("swiftget-visible");
+        return;
+      }
+
+      if (url.startsWith("blob:")) {
+        // Blob = Media Source Extensions: sumber asli tak pernah diberikan
+        // browser dalam bentuk URL. Kandidat dari respons API (tahap 2)
+        // adalah jalan keluarnya — arahkan pengguna ke sana.
+        label.textContent = candidates.size
+          ? `Stream MSE — klik untuk ${candidates.size} kandidat`
+          : "Stream MSE — mainkan videonya, kandidat akan terkumpul";
+        panel.classList.add("swiftget-status");
+        panel.classList.remove("swiftget-error", "swiftget-visible");
+        panel.classList.add("swiftget-visible");
         return;
       }
 
@@ -174,6 +185,13 @@
     async function sendCurrent() {
       if (!current) return;
       const url = resolveUrl(current);
+
+      if (url && url.startsWith("blob:")) {
+        if (candidates.size) openPicker();
+        else flash("Stream MSE (blob:) tidak bisa diunduh langsung", true);
+        return;
+      }
+
       const referer = location.href;
       main.style.opacity = ".6";
       label.textContent = "Mengirim…";
@@ -194,6 +212,7 @@
     document.addEventListener("mouseover", (e) => {
       const el = e.target && e.target.closest && e.target.closest("video,img,audio");
       if (!el) return;
+      if (el.tagName === "IMG" && abaikanGambar) return;
       if (el.tagName === "IMG") {
         const rect = el.getBoundingClientRect();
         // Ikon dan piksel pelacak tidak layak panel.
