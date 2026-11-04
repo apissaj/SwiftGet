@@ -55,24 +55,6 @@
   border-color: #6e2a1e;
 }
 
-/* Badge kandidat jaringan (tahap 2): pojok kanan bawah, tenang. */
-.swiftget-badge {
-  position: fixed;
-  right: 14px;
-  bottom: 14px;
-  z-index: 2147483646;
-  padding: 7px 12px;
-  border-radius: 999px;
-  background: linear-gradient(#3fae6a, #1f7a4a);
-  border: 1px solid #14603a;
-  color: #fff;
-  font: 600 12px/1 system-ui, sans-serif;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
-  cursor: pointer;
-  user-select: none;
-}
-.swiftget-badge:hover { filter: brightness(1.08); }
-
 /* Picker kandidat in-page */
 .swiftget-overlay {
   position: fixed;

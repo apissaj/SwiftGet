@@ -13,10 +13,9 @@
   // ditunda sampai dokumen siap.
   const candidates = new Map(); // url -> "baru" | "terkirim"
   let abaikanGambar = false;    // per situs (sites.json), mis. YouTube
-  let badge = null;
+  let terbaik = null;           // kandidat terpilih otomatis (URL)
   let picker = null;
   let domSiap = false;
-  let badgeTunda = false;
 
   // Endpoint SwiftGet dikecualikan berdasarkan PORT yang dikonfigurasi,
   // bukan host saja — situs di localhost dengan port lain tetap sah.
@@ -33,6 +32,28 @@
         Number(u.port || 80) === endpointPort;
     } catch (ex) {
       return true;
+    }
+  }
+
+  // Pilih kandidat terbaik ala IDM: itag 18 (MP4 progresif bersuara) lebih
+  // dulu; kalau tidak ada, video segar dengan ukuran terbesar (clen).
+  function hitungTerbaik() {
+    terbaik = null;
+    let skorTerbaik = -1;
+    for (const url of candidates.keys()) {
+      const info = infoKandidat(url);
+      if (!info || info.kedaluwarsa) continue;
+      let skor;
+      if (info.itag === "18") skor = 100;
+      else if (info.jenis === "video") skor = 50;
+      else if (info.jenis === "audio") skor = 10;
+      else continue;
+
+      let clen = 0;
+      try { clen = Number(new URL(url).searchParams.get("clen")) || 0; } catch (e) { }
+      skor += clen / 1e9; // pengikat untuk membedakan kualitas
+
+      if (skor > skorTerbaik) { skorTerbaik = skor; terbaik = url; }
     }
   }
 
@@ -72,7 +93,7 @@
         candidates.set(url, "baru");
         added++;
       }
-      if (added) updateBadge();
+      if (added) hitungTerbaik();
     })();
   });
 
@@ -95,28 +116,6 @@
     })
     .catch(() => { });
 
-  function updateBadge() {
-    if (!domSiap) {
-      badgeTunda = true;
-      return;
-    }
-    const baru = [...candidates.values()].filter((s) => s === "baru").length;
-    if (!candidates.size) {
-      badge?.remove();
-      badge = null;
-      return;
-    }
-
-    if (!badge) {
-      badge = document.createElement("div");
-      badge.className = "swiftget-badge";
-      badge.title = "Kandidat unduhan dari SwiftGet";
-      badge.addEventListener("click", openPicker);
-      document.documentElement.appendChild(badge);
-    }
-    badge.textContent = baru > 0 ? `⬇ ${candidates.size} (${baru} baru)` : `⬇ ${candidates.size}`;
-  }
-
   function openPicker() { /* diganti di bawah setelah fungsi didefinisikan */ }
   function closePicker() { }
 
@@ -132,9 +131,16 @@
       '<span class="swiftget-arrow"></span>' +
       '<span class="swiftget-label"></span>' +
       "</span>" +
+      '<span class="swiftget-btn swiftget-list" title="Kandidat lain">≡</span>' +
       '<span class="swiftget-btn swiftget-help" title="Pengaturan ekstensi">?</span>' +
       '<span class="swiftget-btn swiftget-close" title="Sembunyikan">×</span>';
     document.documentElement.appendChild(panel);
+
+    const listBtn = panel.querySelector(".swiftget-list");
+    listBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openPicker();
+    });
 
     const label = panel.querySelector(".swiftget-label");
     const main = panel.querySelector(".swiftget-main");
@@ -168,18 +174,24 @@
 
       if (url.startsWith("blob:")) {
         // Blob = Media Source Extensions: sumber asli tak pernah diberikan
-        // browser dalam bentuk URL. Kandidat dari respons API (tahap 2)
-        // adalah jalan keluarnya — arahkan pengguna ke sana.
-        label.textContent = candidates.size
-          ? `Stream MSE — klik untuk ${candidates.size} kandidat`
-          : "Stream MSE — mainkan videonya, kandidat akan terkumpul";
-        panel.classList.add("swiftget-status");
-        panel.classList.remove("swiftget-error", "swiftget-visible");
-        panel.classList.add("swiftget-visible");
+        // browser dalam bentuk URL. Jalan keluarnya kandidat terbaik yang
+        // tertangkap dari respons player — pengguna tidak perlu memilih.
+        listBtn.style.display = candidates.size ? "inline-flex" : "none";
+        if (terbaik) {
+          label.textContent = "Unduh video ini";
+          panel.classList.remove("swiftget-status", "swiftget-error");
+          panel.classList.add("swiftget-visible");
+        } else {
+          label.textContent = "Mainkan videonya sebentar…";
+          panel.classList.add("swiftget-status");
+          panel.classList.remove("swiftget-error", "swiftget-visible");
+          panel.classList.add("swiftget-visible");
+        }
         return;
       }
 
       label.textContent = labelFor(el);
+      listBtn.style.display = "none";
       panel.classList.remove("swiftget-status", "swiftget-error");
       panel.classList.add("swiftget-visible");
 
@@ -210,8 +222,17 @@
       const url = resolveUrl(current);
 
       if (url && url.startsWith("blob:")) {
-        if (candidates.size) openPicker();
-        else flash("Stream MSE (blob:) tidak bisa diunduh langsung", true);
+        if (!terbaik) {
+          flash("Mainkan videonya sebentar agar URL tertangkap", true);
+          return;
+        }
+        // YouTube dkk.: URL asli tidak ada di elemen; kirim kandidat terbaik.
+        const jawab = chrome.runtime.sendMessage({ type: "swiftget-add", url: terbaik, referer: location.href });
+        main.style.opacity = ".6";
+        const reply = await jawab;
+        main.style.opacity = "";
+        flash(reply && reply.ok ? "Terkirim ke SwiftGet" : (reply && reply.message) || "Gagal mengirim",
+          !(reply && reply.ok));
         return;
       }
 
@@ -310,7 +331,7 @@
             candidates.set(url, "terkirim");
             row.classList.add("swiftget-sent");
             row.textContent = `✓ ${url}`;
-            updateBadge();
+            hitungTerbaik();
           } else {
             row.textContent = (reply && reply.message) || "Gagal mengirim";
           }
@@ -393,7 +414,6 @@
       picker = null;
     };
 
-    if (badgeTunda) updateBadge();
   }
 
   if (document.readyState === "loading") {
