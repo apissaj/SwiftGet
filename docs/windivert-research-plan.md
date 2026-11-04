@@ -65,6 +65,18 @@ Komponen:
 | **P3 Integrasi** | Sambungkan ke SwiftGet (UI, part file, commit) | Alur: play → sadap → file final di folder |
 | **P4 Pemeliharaan** | Matriks risiko perubahan Chrome/Google; rencana tindak | — |
 
+### Hasil P1 (terlaksana — LULUS, riset lanjut P2)
+
+| Item | Hasil |
+|---|---|
+| Tanggal | 2026-11-05 |
+| Metode | CA lokal "SwiftGet Local CA" (openssl, 30 hari) dipasang ke `CurrentUser\Root`; proxy MITM Node (CONNECT tunnel, SNI googlevideo ditutup TLS dengan leaf `*.googlevideo.com` hasil tanda tangan CA); Edge diluncurkan dengan `--proxy-server` |
+| Chrome memutar YouTube lewat MITM | ✅ `currentTime` 0.02 → 6.03 |
+| Error sertifikat | **0** (`ERR_CERT_AUTHORITY_INVALID` tidak muncul sama sekali) |
+| Handshake MITM googlevideo | ✅ 4 berhasil |
+| Keputusan | **LULUS → P2 disetujui** (tangkap plaintext stream ke part file) |
+| Catatan | Spike P1 memakai flag `--proxy-server`; pengalihan via WinDivert menyusul di P3 — pertanyaan inti P1 (kepercayaan CA) identik |
+
 ### Hasil P0 (terlaksana — LULUS, lanjut P1)
 
 | Item | Hasil |
