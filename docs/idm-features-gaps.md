@@ -66,7 +66,7 @@ integrasi** yang belum disentuh, lalu memetakan fitur IDM vs SwiftGet.
 | 4 | **HTTP auth (Basic)** + daftar kredensial | Tidak ada | **Ambil** — sedang; diperlukan untuk server berpassword |
 | 5 | **Download all links** (ekstensi) | Bookmarklet punya picker sederhana | **Ambil** — sedang; tambah aksi "kirim semua tautan" di picker |
 | 6 | **Scheduler** (mulai/berhenti waktu) | Tidak ada | Bisa nanti — sedang; nilai nyata hanya untuk pengguna berat |
-| 7 | **Network monitor** (unduhan di aplikasi mana pun) | Tidak ada — hanya clipboard + ekstensi | **Riset dimulai** — rencana sadap ala IDM via WinDivert: `windivert-research-plan.md` (YouTube/SABR hanya tersedia lewat jalur ini) |
+| 7 | **Network monitor** (unduhan di aplikasi mana pun) | Tidak ada — hanya clipboard + ekstensi | **Riset selesai & diarsipkan** — P0/P1 LULUS, P2 menutup: SABR YouTube memblokir unduhan langsung secara empiris (`windivert-research-plan.md`); untuk YouTube rekomendasinya yt-dlp |
 | 8 | **Site Grabber** (cerai seluruh situs) | Tidak ada | **Tinggalkan** dulu — produk seluruh baru, kompleksitas tinggi |
 | 9 | **Parser MPD via libxml2** | Parser XML sendiri (Fase G) | Cukup — tak perlu bundel libxml2 |
 | 10 | **DB jenis berkas terenkripsi** | Taksonomi terbuka di `FileCategories` | Cukup — versi terbuka lebih mudah diperluas |

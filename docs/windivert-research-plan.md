@@ -65,6 +65,30 @@ Komponen:
 | **P3 Integrasi** | Sambungkan ke SwiftGet (UI, part file, commit) | Alur: play → sadap → file final di folder |
 | **P4 Pemeliharaan** | Matriks risiko perubahan Chrome/Google; rencana tindak | — |
 
+### Hasil P2 (terlaksana — DITUTUP dengan bukti empiris)
+
+| Item | Hasil |
+|---|---|
+| Tanggal | 2026-11-05 |
+| Pertanyaan | Apakah URL `videoplayback` segar hasil tangkapan halaman watch bisa diunduh langsung oleh mesin SwiftGet? |
+| Bukti struktural | `streamingData.adaptiveFormats` masih ada (14 format) tapi **semua tanpa field `url`** — klien web tidak lagi diberi URL per format; satu-satunya URL googlevideo di halaman = `serverAbrStreamingUrl` (endpoint SABR/UMP); ±600 kemunculan string `sabr` per halaman |
+| Bukti server | Semua percobaan unduhan langsung → **403**, termasuk kontrol dengan UA Chrome 131 + `Referer: youtube.com` (membuktikan 403 bukan karena UA mesin); endpoint SABR menjawab `content-type: application/vnd.yt-ump` (protokol UMP, bukan berkas HTTP) |
+| Kesegaran | Seluruh siklus fetch→ekstrak→unduh < 1 menit; `expire` bersisa ±6 jam — 403 bukan karena kedaluwarsa |
+| Satu format legacy (itag 18) | Hanya ada dalam `signatureCipher` **unsigned** (terobfusaksi) — tidak terpakai |
+| **Verdict** | **P2-DITUTUP: SABR memblokir unduhan langsung.** Jalur URL-handoff mustahil untuk YouTube; rekam realtime menuntut implementasi protokol UMP (rapuh, perang berkepanjangan yang sudah dijalankan komunitas lewat yt-dlp) |
+
+### Penutup riset WinDivert
+
+P0 ✅ (fallback TCP) dan P1 ✅ (CA lokal dipercaya) terbukti — fondasi sadap
+berfungsi. Namun P2 menutup rantai: **tujuan akhirnya (YouTube) terhalang
+tembok server SABR**, bukan tembok klien. Implementasi UMP = menduplikasi
+pekerjaan yt-dlp yang sudah berjalan dan terus diperbarui komunitas.
+
+**Keputusan akhir**: riset WinDivert diarsipkan terdokumentasi (dokumen ini);
+untuk YouTube, rekomendasi resmi SwiftGet = integrasi yt-dlp bila suatu saat
+diinginkan; ekstensi tetap jujur menahan panel di YouTube dan fokus pada
+situs yang menyediakan URL asli.
+
 ### Hasil P1 (terlaksana — LULUS, riset lanjut P2)
 
 | Item | Hasil |
