@@ -28,3 +28,4 @@ desktop.ini
 # Node
 node_modules/
 package-lock.json
+extension/e2e/requests.log
