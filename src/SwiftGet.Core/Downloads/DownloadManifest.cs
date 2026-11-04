@@ -26,7 +26,7 @@ public sealed class DownloadManifest
     public string FileName { get; set; } = "";
 
     /// <summary>Folder tujuan akhir (bisa subfolder kategori).</summary>
-    public string TargetDirectory { get; set; }
+    public string TargetDirectory { get; set; } = "";
 
     /// <summary>Folder dasar yang diminta pengguna.</summary>
     public string BaseDirectory { get; set; } = "";
