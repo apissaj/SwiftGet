@@ -61,6 +61,9 @@ public sealed class DownloadManifest
     /// <summary>Header Authorization Basic preemptive (dari userinfo URL).</summary>
     public string? BasicAuth { get; set; }
 
+    /// <summary>Waktu mulai otomatis (scheduler); null berarti tanpa jadwal.</summary>
+    public DateTimeOffset? ScheduledStartUtc { get; set; }
+
     /// <summary>
     /// Keadaan resume unduhan multi-jalur DASH:
     /// <c>resume:jumlah,resume:jumlah</c> untuk jalur video lalu audio.

@@ -17,6 +17,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly HistoryStore _history = new();
     private readonly ExclusionList _exclusions;
     private readonly CancellationTokenSource _cts = new();
+    private readonly System.Windows.Threading.DispatcherTimer _jadwalTimer;
+    private bool _matikanPcDiminta;
+    private bool _adaSelesaiSejakDiminta;
 
     private string _newUrl = "";
     private string _statusMessage = "Siap";
@@ -45,6 +48,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         Manager = new DownloadManager(AppSettings.StateDirectory, options);
         Manager.SetSpeedLimit((long)settings.SpeedLimitKbPerSecond * 1024);
+
+        // Scheduler: periksa jadwal tiap 20 detik. Ringan — pemindaian murni
+        // daftar tugas, keputusannya di JadwalEngine yang murni dan teruji.
+        _jadwalTimer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(20),
+        };
+        _jadwalTimer.Tick += (_, _) => ProsesJadwal();
+        _jadwalTimer.Start();
         Downloads = new DownloadsViewModel(Manager, dispatcher);
 
         AddCommand = new AsyncRelayCommand(AddAndStartAsync, () => !IsBusy && HasValidUrl);
@@ -315,6 +328,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 _ => "Siap",
             };
 
+            if (task.State == DownloadState.Completed && _matikanPcDiminta)
+                _adaSelesaiSejakDiminta = true;
+
             if (task.State == DownloadState.Completed && item is not null)
             {
                 // Riwayat dicatat di sini: satu titik untuk semua jalur mulai
@@ -520,6 +536,70 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void TerapkanBatasKecepatan() =>
         Manager.SetSpeedLimit((long)_settings.SpeedLimitKbPerSecond * 1024);
 
+    /// <summary>
+    /// Atur (atau hapus, bila <paramref name="waktuUtc"/> null) jadwal satu
+    /// unduhan, lalu segarkan tampilannya.
+    /// </summary>
+    public void AturJadwal(string id, DateTimeOffset? waktuUtc, bool matikanPc)
+    {
+        DownloadTask? task = Manager.Get(id);
+        if (task is null) return;
+
+        task.SetSchedule(waktuUtc);
+        Downloads.Items.FirstOrDefault(i => i.Id == id)?.RefreshFromTask();
+
+        if (waktuUtc is null)
+        {
+            StatusMessage = $"Jadwal {task.FileName} dibatalkan";
+            return;
+        }
+
+        if (matikanPc) _matikanPcDiminta = true;
+        StatusMessage = $"{task.FileName} menunggu jadwal " +
+            $"{waktuUtc.Value.ToLocalTime():HH:mm}";
+    }
+
+    /// <summary>
+    /// Detak scheduler: mulai unduhan yang waktunya tiba, lalu periksa apakah
+    /// komputer sudah boleh dimatikan.
+    /// </summary>
+    private void ProsesJadwal()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        foreach (string id in JadwalEngine.TaskJatuhTempo(
+            Manager.Tasks.Select(t => (t.Id, t.ScheduledStartUtc, t.State)), now))
+        {
+            DownloadTask? task = Manager.Get(id);
+            if (task is null) continue;
+            StatusMessage = $"{task.FileName} dimulai sesuai jadwal";
+            _ = StartByIdAsync(id);
+        }
+
+        if (JadwalEngine.HarusMatikanPc(
+                Manager.Tasks.Select(t => (t.State, t.ScheduledStartUtc)),
+                _matikanPcDiminta, _adaSelesaiSejakDiminta))
+        {
+            _matikanPcDiminta = false;
+            _adaSelesaiSejakDiminta = false;
+            StatusMessage = "Semua unduhan selesai. Komputer dimatikan dalam 60 detik.";
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "shutdown",
+                    Arguments = "/s /t 60",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = "Gagal mematikan komputer: " + ex.Message;
+            }
+        }
+    }
+
     public void SetStatus(string message) => StatusMessage = message;
 
     public void RefreshCommandStates()
@@ -542,6 +622,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        _jadwalTimer.Stop();
 
         Downloads.StopSampling();
         _cts.Cancel();

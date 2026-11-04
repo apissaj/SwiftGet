@@ -311,4 +311,37 @@ public sealed class DownloadsViewModelTests
         Assert.Equal("Video", itemNaik.CategoryText);
         Assert.Equal("Lainnya", itemTurun.CategoryText);
     }
+
+    // ---- Penanda jadwal di baris ----
+
+    [Fact]
+    public void ScheduleText_Terjadwal_MenampilkanPenandaMenunggu()
+    {
+        var task = MakeTask("terjadwal.bin");
+        var vm = MakeViewModel(task);
+
+        task.SetSchedule(new DateTimeOffset(2026, 5, 5, 2, 0, 0, TimeSpan.Zero));
+        vm.Items[0].RefreshFromTask();
+
+        // Jam pada teks mengikuti zona mesin; yang dikunci hanya penandanya.
+        Assert.Contains("Menunggu jadwal", vm.Items[0].ScheduleText);
+    }
+
+    [Fact]
+    public void ScheduleText_TanpaJadwalNull_DanKembaliNullSetelahDibatalkan()
+    {
+        var task = MakeTask("bebas.bin");
+        var vm = MakeViewModel(task);
+
+        Assert.Null(vm.Items[0].ScheduleText);
+
+        task.SetSchedule(new DateTimeOffset(2026, 5, 5, 2, 0, 0, TimeSpan.Zero));
+        vm.Items[0].RefreshFromTask();
+        Assert.NotNull(vm.Items[0].ScheduleText);
+
+        task.SetSchedule(null);
+        vm.Items[0].RefreshFromTask();
+
+        Assert.Null(vm.Items[0].ScheduleText);
+    }
 }

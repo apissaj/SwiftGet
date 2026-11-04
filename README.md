@@ -40,6 +40,8 @@ selain .NET sendiri.
 - Pola kategori IDM: berkas selesai dipindah ke folder per kategori, bisa
   dimatikan di pengaturan; batas kecepatan total (speed limiter); HTTP
   Basic auth lewat URL berkredensial; daftar pengecualian tangkapan.
+- Scheduler: "Unduh nanti" pada jam tertentu, plus opsi mematikan komputer
+  setelah semua unduhan selesai.
 - Bookmarklet: endpoint lokal di `127.0.0.1` menerima URL dari browser
   (mati secara bawaan, dinyalakan di pengaturan).
 - Deteksi URL dari clipboard, tray dengan aksi cepat, satu instance,

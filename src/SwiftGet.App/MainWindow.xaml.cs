@@ -490,6 +490,16 @@ public partial class MainWindow : Window
 
     private void OpenHistory_Click(object sender, RoutedEventArgs e) => OpenHistory();
 
+    private void Jadwal_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedItem is null) return;
+
+        var dialog = new JadwalWindow(_viewModel.SelectedItem.Task.ScheduledStartUtc) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+
+        _viewModel.AturJadwal(_viewModel.SelectedItem.Id, dialog.Hasil, dialog.MatikanPc);
+    }
+
     private void OpenHistory()
     {
         var dialog = new HistoryWindow(_viewModel.History) { Owner = this };

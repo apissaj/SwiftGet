@@ -85,6 +85,15 @@ public sealed class DownloadTask
     public string? BasicAuth { get; internal set; }
 
     /// <summary>
+    /// Waktu unduhan otomatis dimulai (scheduler). Null berarti tanpa jadwal;
+    /// pemangku jadwal di view model yang memantau nilai ini.
+    /// </summary>
+    public DateTimeOffset? ScheduledStartUtc { get; private set; }
+
+    /// <summary>Atur atau batalkan jadwal (null = batalkan).</summary>
+    public void SetSchedule(DateTimeOffset? waktuUtc) => ScheduledStartUtc = waktuUtc;
+
+    /// <summary>
     /// Keadaan resume unduhan multi-jalur DASH:
     /// <c>resume:jumlah,resume:jumlah</c> untuk jalur video lalu audio.
     /// </summary>
@@ -286,6 +295,7 @@ public sealed class DownloadTask
                 Referer = Referer,
                 Cookies = Cookies,
                 BasicAuth = BasicAuth,
+                ScheduledStartUtc = ScheduledStartUtc,
                 MediaTracksState = MediaTracksState,
                 State = _state,
                 LastError = _lastError,
@@ -323,6 +333,7 @@ public sealed class DownloadTask
             Referer = manifest.Referer,
             Cookies = manifest.Cookies,
             BasicAuth = manifest.BasicAuth,
+            ScheduledStartUtc = manifest.ScheduledStartUtc,
             MediaTracksState = manifest.MediaTracksState,
         };
 

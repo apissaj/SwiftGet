@@ -52,6 +52,11 @@ public sealed class DownloadItemViewModel : ObservableObject
     /// memberi nama akhir lewat Content-Disposition.</summary>
     public string CategoryText => FileCategories.LabelOf(FileName);
 
+    /// <summary>Penanda jadwal di baris; null bila tanpa jadwal.</summary>
+    public string? ScheduleText => Task.ScheduledStartUtc is DateTimeOffset s
+        ? $"Menunggu jadwal {s.ToLocalTime():HH:mm}"
+        : null;
+
     public string Host
     {
         get
@@ -289,6 +294,7 @@ public sealed class DownloadItemViewModel : ObservableObject
         FileName = Task.FileName;
         OnPropertyChanged(nameof(FileName));
         OnPropertyChanged(nameof(CategoryText));
+        OnPropertyChanged(nameof(ScheduleText));
         OnPropertyChanged(nameof(ValidatorText));
         OnPropertyChanged(nameof(RangeSupportText));
         OnPropertyChanged(nameof(TargetFolder));

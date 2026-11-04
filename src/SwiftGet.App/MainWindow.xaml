@@ -241,6 +241,10 @@
                                                     <TextBlock Text="{Binding SegmentText}"
                                                                Style="{StaticResource Caption}"
                                                                HorizontalAlignment="Right" />
+                                                    <TextBlock Text="{Binding ScheduleText}"
+                                                               Style="{StaticResource Caption}"
+                                                               HorizontalAlignment="Right"
+                                                               Foreground="{DynamicResource AccentBrush}" />
                                                 </StackPanel>
 
                                                 <Button Content="Jeda" Style="{StaticResource GhostButton}"
@@ -521,6 +525,9 @@
                             <Button Content="Buka lokasi" Style="{StaticResource GhostButton}"
                                     HorizontalAlignment="Stretch"
                                     Command="{Binding OpenFileCommand}" />
+                            <Button Content="Unduh nanti…" Style="{StaticResource GhostButton}"
+                                    HorizontalAlignment="Stretch"
+                                    Click="Jadwal_Click" />
                         </StackPanel>
                     </Border>
                 </Grid>

@@ -1,0 +1,49 @@
+<Window x:Class="SwiftGet.App.JadwalWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Unduh nanti"
+        Height="300" Width="440"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}"
+        FontFamily="{DynamicResource AppFont}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Unduh nanti" Style="{StaticResource Heading}" />
+            <TextBlock x:Name="SubJudul" Style="{StaticResource Caption}" Margin="0,4,0,0"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1">
+            <TextBlock Text="Mulai otomatis pada (HH:mm)" Style="{StaticResource Body}" />
+            <TextBox x:Name="JamBox" Style="{StaticResource UrlTextBox}" Margin="0,6,0,0" />
+            <TextBlock Style="{StaticResource Caption}" Margin="0,4,0,0" TextWrapping="Wrap"
+                       Text="Waktu hari ini; bila sudah lewat, besok. Komputer dan SwiftGet harus tetap menyala." />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Margin="0,14,0,0">
+            <CheckBox x:Name="MatikanPcBox"
+                      Content="Matikan komputer setelah semua unduhan selesai"
+                      Foreground="{DynamicResource TextPrimaryBrush}" />
+            <TextBlock Style="{StaticResource Caption}" Margin="16,4,0,0" TextWrapping="Wrap"
+                       Text="Komputer dimatikan 60 detik setelah unduhan terakhir tuntas, bila tidak ada jadwal lain yang menunggu." />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="HapusJadwalButton" Content="Hapus jadwal"
+                    Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,0" Click="HapusJadwal_Click" />
+            <Button Content="Batal" Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,0" Click="Batal_Click" />
+            <Button Content="Simpan" Style="{StaticResource PrimaryButton}" Click="Simpan_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
