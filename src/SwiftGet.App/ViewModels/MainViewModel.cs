@@ -72,6 +72,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ResumeAllCommand = new AsyncRelayCommand(ResumeAllAsync, () => Downloads.Items.Any(i => i.CanResume));
         ClearCompletedCommand = new RelayCommand(_ => ClearCompleted(), new Func<object?, bool>(_ => Downloads.Items.Any(i => i.State == DownloadState.Completed)));
         CopyUrlCommand = new RelayCommand(_ => CopySelectedUrl(), _ => SelectedItem is not null);
+        HapusUnduhanCommand = new RelayCommand(param =>
+        {
+            if (param is string id && id.Length > 0) HapusUnduhan(id);
+        });
+        HapusYangGagalCommand = new RelayCommand(_ => HapusYangGagal());
         CloseInspectorCommand = new RelayCommand(_ => IsInspectorOpen = false);
         ToggleThemeCommand = new RelayCommand(_ => ToggleTheme());
         FocusUrlCommand = new RelayCommand(_ => FocusUrlRequested?.Invoke(this, EventArgs.Empty));
@@ -106,6 +111,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// berhasil — UI menampilkan dialog pilih kualitas.
     /// </summary>
     public event EventHandler<Core.YouTube.YouTubeMeta>? YouTubeTerdeteksi;
+
+    public System.Windows.Input.ICommand HapusUnduhanCommand { get; }
+    public System.Windows.Input.ICommand HapusYangGagalCommand { get; }
 
     /// <summary>Diminta UI saat unduhan selesai (untuk notifikasi tray).</summary>
     public event Action<DownloadItemViewModel>? DownloadCompleted;
@@ -673,6 +681,50 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         NewUrl = url;
         StatusMessage = "URL terdeteksi di clipboard";
+    }
+
+    /// <summary>
+    /// Hapus satu unduhan dari daftar beserta berkasnya (final maupun sisa).
+    /// Unduhan yang sedang berjalan dihentikan dulu.
+    /// </summary>
+    public void HapusUnduhan(string id)
+    {
+        DownloadTask? task = Manager.Get(id);
+
+        if (task is null)
+        {
+            // Tidak ada lagi di mesin (mis. dibatalkan sebelumnya) — cukup buang barisnya.
+            Downloads.Remove(id);
+            StatusMessage = "Dihapus dari daftar";
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(task.FinalPath)) File.Delete(task.FinalPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Berkas terkunci: state tetap dibersihkan, berkasnya dibiarkan.
+        }
+
+        Manager.Remove(id);   // hentikan sesi + hapus state/berkas sementara
+        Downloads.Remove(id); // keluarkan baris dari daftar
+        StatusMessage = $"{task.FileName} dihapus";
+    }
+
+    /// <summary>Bersihkan semua unduhan berstatus gagal atau dibatalkan.</summary>
+    public void HapusYangGagal()
+    {
+        var ids = Downloads.Items
+            .Where(i => i.State is DownloadState.Failed or DownloadState.Canceled)
+            .Select(i => i.Id).ToList();
+
+        foreach (string id in ids) HapusUnduhan(id);
+
+        StatusMessage = ids.Count > 0
+            ? $"{ids.Count} unduhan gagal dibersihkan"
+            : "Tidak ada unduhan gagal";
     }
 
     /// <summary>Baca ulang daftar pengecualian setelah berkasnya diedit.</summary>

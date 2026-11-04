@@ -256,9 +256,14 @@
                                                         Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         Visibility="{Binding CanResume, Converter={StaticResource BoolToVisibility}}" />
                                                 <Button Content="Batal" Style="{StaticResource GhostButton}"
-                                                        Padding="10,5" FontSize="11"
+                                                        Padding="10,5" FontSize="11" Margin="0,0,6,0"
                                                         Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}" />
+                                                <Button Content="Hapus" Style="{StaticResource GhostButton}"
+                                                        Padding="10,5" FontSize="11"
+                                                        Command="{Binding DataContext.HapusUnduhanCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding Id}"
+                                                        ToolTip="Hapus dari daftar beserta berkasnya" />
                                             </StackPanel>
                                         </Grid>
 
