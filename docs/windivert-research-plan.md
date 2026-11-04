@@ -65,6 +65,18 @@ Komponen:
 | **P3 Integrasi** | Sambungkan ke SwiftGet (UI, part file, commit) | Alur: play → sadap → file final di folder |
 | **P4 Pemeliharaan** | Matriks risiko perubahan Chrome/Google; rencana tindak | — |
 
+### Hasil P0 (terlaksana — LULUS, lanjut P1)
+
+| Item | Hasil |
+|---|---|
+| Tanggal | 2026-11-05 |
+| Metode | Blocker P/Invoke WinDivert 2.2.2 (filter `outbound and udp.DstPort == 443`, drop tanpa reinject), 45 detik, elevated |
+| Bukti QUIC dipakai Chrome | **214 paket UDP/443 dihapus** selama blokir (drop #100 di detik ke-13, #200 di ke-33 — aliran kontinu) |
+| Bukti fallback TCP | Sesi `TCP …:443 ESTABLISHED` tetap hidup selama blokir, termasuk ke IP Google `74.125.24.94` |
+| Observasi pengguna | Video mangket sebentar lalu lanjut lagi |
+| Alat | `WdBlocker.exe` (P/Invoke, log di `blocker.log`) — spike di folder kerja WinDivert |
+| Keputusan | **LULUS → P1 disetujui** (CA lokal + MITM SNI googlevideo) |
+
 **Titik berhenti yang jujur**: bila P1 gagal karena ECH/certificate-pinning
 yang tidak teratasi, riset ditutup dan didokumentasikan — tanpa paksaan.
 
