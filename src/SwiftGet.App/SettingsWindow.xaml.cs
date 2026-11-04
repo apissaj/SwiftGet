@@ -31,6 +31,7 @@ public partial class SettingsWindow : Window
         SpeedLimitBox.Text = settings.SpeedLimitKbPerSecond.ToString();
 
         FfmpegBox.Text = settings.FfmpegPath;
+        YtDlpBox.Text = settings.YtDlpPath;
 
         WatchClipboardBox.IsChecked = settings.WatchClipboard;
         AutoStartBox.IsChecked = settings.StartDownloadsAutomatically;
@@ -85,6 +86,7 @@ public partial class SettingsWindow : Window
             _settings.SpeedLimitKbPerSecond = limit;
 
         _settings.FfmpegPath = FfmpegBox.Text.Trim();
+        _settings.YtDlpPath = YtDlpBox.Text.Trim();
 
         _settings.WatchClipboard = WatchClipboardBox.IsChecked == true;
         _settings.StartDownloadsAutomatically = AutoStartBox.IsChecked == true;

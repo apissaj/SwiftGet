@@ -20,6 +20,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly System.Windows.Threading.DispatcherTimer _jadwalTimer;
     private bool _matikanPcDiminta;
     private bool _adaSelesaiSejakDiminta;
+    private readonly Dictionary<string, (string AudioTaskId, string FinalPath)> _youtubePasangan = new();
 
     private string _newUrl = "";
     private string _statusMessage = "Siap";
@@ -99,6 +100,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Diminta UI untuk memindahkan fokus ke kotak URL.</summary>
     public event EventHandler? FocusUrlRequested;
+
+    /// <summary>
+    /// Dinaikkan bila URL yang ditempel adalah YouTube dan probe yt-dlp
+    /// berhasil — UI menampilkan dialog pilih kualitas.
+    /// </summary>
+    public event EventHandler<Core.YouTube.YouTubeMeta>? YouTubeTerdeteksi;
 
     /// <summary>Diminta UI saat unduhan selesai (untuk notifikasi tray).</summary>
     public event Action<DownloadItemViewModel>? DownloadCompleted;
@@ -230,9 +237,145 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private async System.Threading.Tasks.Task AddAndStartAsync()
     {
+        string urlBersih = (_newUrl ?? "").Trim();
+        if (Uri.TryCreate(urlBersih, UriKind.Absolute, out var uDeteksi) &&
+            Core.YouTube.YouTube.IsYouTubeUrl(uDeteksi))
+        {
+            await ProbeYouTubeAsync(urlBersih).ConfigureAwait(true);
+            return;
+        }
+
         DownloadTask? task = TryAdd();
         if (task is null) return;
         await StartTaskAsync(task).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Probe yt-dlp untuk URL YouTube: bila berhasil, daftar kualitas
+    /// dinaikkan lewat event agar UI menampilkan dialog pilihan.
+    /// </summary>
+    private async System.Threading.Tasks.Task ProbeYouTubeAsync(string url)
+    {
+        string? exe = Core.YouTube.YtDlpLocator.Find(_settings.YtDlpPath);
+        if (exe is null)
+        {
+            StatusMessage = "Butuh yt-dlp.exe untuk YouTube — atur lokasinya di pengaturan";
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = "Membaca daftar kualitas YouTube…";
+        RefreshCommandStates();
+        try
+        {
+            var meta = await Core.YouTube.YouTube.AmbilAsync(exe, url, _cts.Token).ConfigureAwait(true);
+            if (meta.Error is not null)
+            {
+                StatusMessage = meta.Error;
+                return;
+            }
+            if (meta.Video.Count == 0)
+            {
+                StatusMessage = "Tidak ada format video yang tersedia untuk tautan ini";
+                return;
+            }
+            StatusMessage = $"Pilih kualitas: {meta.Title}";
+            YouTubeTerdeteksi?.Invoke(this, meta);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            StatusMessage = "Gagal membaca YouTube: " + ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            RefreshCommandStates();
+        }
+    }
+
+    /// <summary>
+    /// Mulai unduhan YouTube terpilih: video via mesin, audio terbaik
+    /// menyusul, lalu digabung dengan ffmpeg saat keduanya tuntas.
+    /// </summary>
+    public async System.Threading.Tasks.Task MulaiYouTubeAsync(Core.YouTube.YouTubeFormat video, Core.YouTube.YouTubeMeta meta)
+    {
+        try
+        {
+            Directory.CreateDirectory(_settings.DownloadDirectory);
+            string judul = Core.YouTube.YouTube.BersihkanNama(meta.Title);
+            string finalVideo = Path.Combine(_settings.DownloadDirectory, judul + "." + video.Ext);
+
+            DownloadTask taskVideo = Manager.Add(video.Url, _settings.DownloadDirectory, fileName: finalVideo);
+            Downloads.Add(taskVideo);
+            SelectedItem = Downloads.Items.FirstOrDefault(i => i.Id == taskVideo.Id);
+
+            string? audioId = null;
+            var audio = meta.AudioTerbaik;
+            if (audio is not null)
+            {
+                string extAudio = audio.Ext == "m4a" ? "m4a" : "opus";
+                DownloadTask taskAudio = Manager.Add(audio.Url, _settings.DownloadDirectory,
+                    fileName: judul + ".audio." + extAudio);
+                Downloads.Add(taskAudio);
+                audioId = taskAudio.Id;
+                _youtubePasangan[taskVideo.Id] = (taskAudio.Id, finalVideo);
+            }
+
+            RefreshCommandStates();
+            StatusMessage = audioId is null
+                ? $"{taskVideo.FileName} (YouTube) mulai diunduh"
+                : $"{judul} (YouTube): video + audio diunduh, digabung otomatis setelah tuntas";
+
+            var tugas = new List<System.Threading.Tasks.Task> { StartTaskAsync(taskVideo) };
+            if (audioId is not null) tugas.Add(StartTaskAsync(Manager.Get(audioId)!));
+            await System.Threading.Tasks.Task.WhenAll(tugas).ConfigureAwait(true);
+            await GabungkanYouTubeSelesai(taskVideo.Id).ConfigureAwait(true);
+        }
+        catch (DownloadException ex)
+        {
+            StatusMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Gagal mengunduh YouTube: " + ex.Message;
+        }
+    }
+
+    private async System.Threading.Tasks.Task GabungkanYouTubeSelesai(string videoTaskId)
+    {
+        if (!_youtubePasangan.TryGetValue(videoTaskId, out var pasangan)) return;
+
+        DownloadTask? taskVideo = Manager.Get(videoTaskId);
+        DownloadTask? taskAudio = Manager.Get(pasangan.AudioTaskId);
+        if (taskVideo?.State != DownloadState.Completed || taskAudio?.State != DownloadState.Completed) return;
+
+        _youtubePasangan.Remove(videoTaskId);
+
+        string finalVideo = taskVideo.FinalPath;
+        string finalAudio = taskAudio.FinalPath;
+        string tmp = finalVideo + ".mux.tmp";
+
+        string? ffmpeg = SwiftGet.Core.Downloads.Media.FfmpegLocator.Find(_settings.FfmpegPath);
+        if (ffmpeg is null)
+        {
+            StatusMessage = "Video tersimpan, tetapi penggabungan audio butuh ffmpeg — atur lokasinya di pengaturan";
+            return;
+        }
+
+        StatusMessage = "Menggabungkan video + audio YouTube…";
+        try
+        {
+            await System.Threading.Tasks.Task.Run(
+                () => SwiftGet.Core.Downloads.Media.FfmpegLocator.MuxAsync(ffmpeg, finalVideo, finalAudio, tmp)).ConfigureAwait(true);
+            File.Move(tmp, finalVideo, overwrite: true);
+            File.Delete(finalAudio);
+            StatusMessage = $"{Path.GetFileName(finalVideo)} selesai — video dan audio digabung";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Gagal menggabungkan: " + ex.Message;
+        }
     }
 
     private void AddOnly()
@@ -330,6 +473,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             if (task.State == DownloadState.Completed && _matikanPcDiminta)
                 _adaSelesaiSejakDiminta = true;
+
+            if (_youtubePasangan.Count > 0)
+                await GabungkanYouTubeSelesai(task.Id).ConfigureAwait(true);
 
             if (task.State == DownloadState.Completed && item is not null)
             {

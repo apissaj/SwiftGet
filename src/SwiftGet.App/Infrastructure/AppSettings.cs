@@ -55,6 +55,12 @@ public sealed class AppSettings
     public int SpeedLimitKbPerSecond { get; set; }
 
     /// <summary>
+    /// Lokasi yt-dlp.exe untuk membuka kunci YouTube. Kosong berarti dicari
+    /// di folder aplikasi lalu PATH.
+    /// </summary>
+    public string YtDlpPath { get; set; } = "";
+
+    /// <summary>
     /// Tema terakhir yang dipilih pengguna. Null berarti ikuti tema Windows
     /// pada saat aplikasi dijalankan.
     /// </summary>

@@ -42,6 +42,9 @@ selain .NET sendiri.
   Basic auth lewat URL berkredensial; daftar pengecualian tangkapan.
 - Scheduler: "Unduh nanti" pada jam tertentu, plus opsi mematikan komputer
   setelah semua unduhan selesai.
+- YouTube via yt-dlp: tempel URL YouTube → pilih kualitas → video + audio
+  diunduh lewat mesin SwiftGet dan digabung otomatis dengan ffmpeg.
+  Butuh yt-dlp.exe (atur di pengaturan, atau letakkan di folder aplikasi).
 - Bookmarklet: endpoint lokal di `127.0.0.1` menerima URL dari browser
   (mati secara bawaan, dinyalakan di pengaturan).
 - Deteksi URL dari clipboard, tray dengan aksi cepat, satu instance,
