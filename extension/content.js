@@ -13,8 +13,9 @@
   // ditunda sampai dokumen siap.
   const candidates = new Map(); // url -> "baru" | "terkirim"
   let abaikanGambar = false;    // per situs (sites.json), mis. YouTube
+  let izinkanBlob = true;       // per situs; YouTube menahan panel blob
+
   let terbaik = null;           // kandidat terpilih otomatis (URL)
-  let picker = null;
   let domSiap = false;
 
   // Endpoint SwiftGet dikecualikan berdasarkan PORT yang dikonfigurasi,
@@ -59,7 +60,7 @@
 
   // Kandidat googlevideo membawa metadata di query-nya: itag (varian),
   // mime (video/audio), expire (unix detik). Dipakai untuk label dan
-  // penyaring kedaluwarsa di picker — URL kedaluwarsa pasti 403.
+  // penyaring kedaluwarsa kandidat — URL kedaluwarsa pasti 403.
   function infoKandidat(url) {
     try {
       const u = new URL(url);
@@ -109,6 +110,7 @@
       const situs = (db.sites || []).find((s) =>
         (s.hosts || []).some((h) => host === h || host.endsWith("." + h)));
       abaikanGambar = !!(situs && situs.ignoreImages);
+      izinkanBlob = !!(situs && (situs.blobPanel !== false));
       window.postMessage({
         __swiftget__: true, kind: "config",
         responseRegexes: (situs && situs.responseRegexes) || [],
@@ -116,10 +118,7 @@
     })
     .catch(() => { });
 
-  function openPicker() { /* diganti di bawah setelah fungsi didefinisikan */ }
-  function closePicker() { }
-
-  // Sisanya butuh DOM: panel melayang dan picker.
+  // Sisanya butuh DOM: panel melayang.
   function initDom() {
     if (domSiap) return;
     domSiap = true;
@@ -131,288 +130,10 @@
       '<span class="swiftget-arrow"></span>' +
       '<span class="swiftget-label"></span>' +
       "</span>" +
-      '<span class="swiftget-btn swiftget-list" title="Kandidat lain">≡</span>' +
       '<span class="swiftget-btn swiftget-help" title="Pengaturan ekstensi">?</span>' +
       '<span class="swiftget-btn swiftget-close" title="Sembunyikan">×</span>';
     document.documentElement.appendChild(panel);
 
-    const listBtn = panel.querySelector(".swiftget-list");
-    listBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openPicker();
-    });
-
-    const label = panel.querySelector(".swiftget-label");
-    const main = panel.querySelector(".swiftget-main");
-    let current = null;          // elemen media yang ditunjuk
-    let hideTimer = null;
-    const dismissed = new WeakSet();
-
-    function labelFor(el) {
-      if (el.tagName === "VIDEO") return "Unduh video ini";
-      if (el.tagName === "AUDIO") return "Unduh audio ini";
-      return "Unduh gambar ini";
-    }
-
-    function resolveUrl(el) {
-      if (el.tagName === "IMG") return el.currentSrc || el.src || null;
-      return el.currentSrc || el.src ||
-        (el.querySelector("source") && el.querySelector("source").src) || null;
-    }
-
-    function show(el) {
-      if (dismissed.has(el)) return;
-      current = el;
-
-      const url = resolveUrl(el);
-      if (!url || url.startsWith("data:")) {
-        label.textContent = "Sumber media tidak dikenal";
-        panel.classList.add("swiftget-status", "swiftget-error");
-        panel.classList.add("swiftget-visible");
-        return;
-      }
-
-      if (url.startsWith("blob:")) {
-        // Blob = Media Source Extensions: sumber asli tak pernah diberikan
-        // browser dalam bentuk URL. Jalan keluarnya kandidat terbaik yang
-        // tertangkap dari respons player — pengguna tidak perlu memilih.
-        listBtn.style.display = candidates.size ? "inline-flex" : "none";
-        if (terbaik) {
-          label.textContent = "Unduh video ini";
-          panel.classList.remove("swiftget-status", "swiftget-error");
-          panel.classList.add("swiftget-visible");
-        } else {
-          label.textContent = "Mainkan videonya sebentar…";
-          panel.classList.add("swiftget-status");
-          panel.classList.remove("swiftget-error", "swiftget-visible");
-          panel.classList.add("swiftget-visible");
-        }
-        return;
-      }
-
-      label.textContent = labelFor(el);
-      listBtn.style.display = "none";
-      panel.classList.remove("swiftget-status", "swiftget-error");
-      panel.classList.add("swiftget-visible");
-
-      const rect = el.getBoundingClientRect();
-      const w = panel.offsetWidth || 170;
-      const h = panel.offsetHeight || 26;
-      const left = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8));
-      const top = Math.max(8, Math.min(rect.top, window.innerHeight - h - 8));
-      panel.style.left = `${left}px`;
-      panel.style.top = `${top}px`;
-    }
-
-    function hide() {
-      panel.classList.remove("swiftget-visible");
-      current = null;
-    }
-
-    function flash(message, isError) {
-      label.textContent = message;
-      panel.classList.toggle("swiftget-error", !!isError);
-      panel.classList.add("swiftget-status", "swiftget-visible");
-      hideTimer && clearTimeout(hideTimer);
-      hideTimer = setTimeout(hide, 2500);
-    }
-
-    async function sendCurrent() {
-      if (!current) return;
-      const url = resolveUrl(current);
-
-      if (url && url.startsWith("blob:")) {
-        if (!terbaik) {
-          flash("Mainkan videonya sebentar agar URL tertangkap", true);
-          return;
-        }
-        // YouTube dkk.: URL asli tidak ada di elemen; kirim kandidat terbaik.
-        const jawab = chrome.runtime.sendMessage({ type: "swiftget-add", url: terbaik, referer: location.href });
-        main.style.opacity = ".6";
-        const reply = await jawab;
-        main.style.opacity = "";
-        flash(reply && reply.ok ? "Terkirim ke SwiftGet" : (reply && reply.message) || "Gagal mengirim",
-          !(reply && reply.ok));
-        return;
-      }
-
-      const referer = location.href;
-      main.style.opacity = ".6";
-      label.textContent = "Mengirim…";
-
-      let reply;
-      try {
-        reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer });
-      } catch (ex) {
-        reply = { ok: false, message: "Service worker tidak merespons" };
-      }
-
-      main.style.opacity = "";
-      flash(reply && reply.ok ? "Terkirim ke SwiftGet" : (reply && reply.message) || "Gagal mengirim", !(reply && reply.ok));
-      if (reply && reply.ok) dismissed.add(current);
-    }
-
-    // Tampilkan panel saat kursor menyentuh elemen media yang cukup besar.
-    document.addEventListener("mouseover", (e) => {
-      const el = e.target && e.target.closest && e.target.closest("video,img,audio");
-      if (!el) return;
-      if (el.tagName === "IMG" && abaikanGambar) return;
-      if (el.tagName === "IMG") {
-        const rect = el.getBoundingClientRect();
-        // Ikon dan piksel pelacak tidak layak panel.
-        if (rect.width < 64 || rect.height < 48) return;
-      }
-      show(el);
-    }, true);
-
-    panel.addEventListener("mouseenter", () => {
-      hideTimer && clearTimeout(hideTimer);
-    });
-    panel.addEventListener("mouseleave", hide);
-
-    // Klik di luar panel dan elemen media menutup panel.
-    document.addEventListener("click", (e) => {
-      if (panel.contains(e.target)) return;
-      if (current && (current === e.target || current.contains(e.target))) return;
-      if (panel.classList.contains("swiftget-visible") &&
-          !panel.classList.contains("swiftget-status")) hide();
-    });
-
-    main.addEventListener("click", sendCurrent);
-    panel.querySelector(".swiftget-close").addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (current) dismissed.add(current);
-      hide();
-    });
-    panel.querySelector(".swiftget-help").addEventListener("click", (e) => {
-      e.stopPropagation();
-      chrome.runtime.sendMessage({ type: "swiftget-open-options" });
-      hide();
-    });
-
-    // Picker untuk kandidat jaringan (versi penuh).
-    openPicker = function () {
-      closePicker();
-
-      picker = document.createElement("div");
-      picker.className = "swiftget-overlay";
-      const box = document.createElement("div");
-      box.className = "swiftget-picker";
-      const head = document.createElement("div");
-      head.className = "swiftget-picker-head";
-      head.textContent = `Kirim ke SwiftGet — ${candidates.size} kandidat`;
-      box.appendChild(head);
-
-      const pasangan = [...candidates]
-        .map(([url, status]) => ({ url, status, info: infoKandidat(url) }))
-        .sort((a, b) => Number(a.info?.kedaluwarsa ?? false) - Number(b.info?.kedaluwarsa ?? false));
-
-      for (const { url, status, info } of pasangan) {
-        const row = document.createElement("a");
-        const kadaluarsa = info?.kedaluwarsa === true;
-        const label = info
-          ? [info.jenis, info.itag ? `itag ${info.itag}` : null,
-             kadaluarsa ? `KEDALUWARSA (${info.waktu})` : null]
-              .filter(Boolean).join(" · ") + "  —  " + url
-          : url;
-        row.className = "swiftget-picker-row"
-          + (status === "terkirim" || kadaluarsa ? " swiftget-sent" : "");
-        row.textContent = status === "terkirim" ? `✓ ${url}` : label;
-        row.href = "#";
-        row.addEventListener("click", async (ev) => {
-          ev.preventDefault();
-          if (kadaluarsa) {
-            row.textContent = "URL kedaluwarsa — mainkan videonya lagi untuk URL baru";
-            return;
-          }
-          row.textContent = "Mengirim…";
-          const reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer: location.href });
-          if (reply && reply.ok) {
-            candidates.set(url, "terkirim");
-            row.classList.add("swiftget-sent");
-            row.textContent = `✓ ${url}`;
-            hitungTerbaik();
-          } else {
-            row.textContent = (reply && reply.message) || "Gagal mengirim";
-          }
-        });
-        box.appendChild(row);
-      }
-
-      // Tautan berkas di DOM (dimensi kedua, ala IDM "Download all links"):
-      // a[href] ber-ekstensi media yang belum tercakup kandidat jaringan.
-      const MEDIA_EXT = /\.(mp4|m4v|mkv|webm|mov|avi|flv|ts|mp3|m4a|wav|flac|ogg|opus|m3u8|mpd|zip|rar|7z|tar|gz|xz|iso|pdf|docx?|xlsx?|pptx?|epub|exe|msi|msix|apk|dmg)([?#]|$)/i;
-      const domLinks = [];
-      const terlihat = new Set(candidates.keys());
-      document.querySelectorAll("a[href]").forEach((a) => {
-        const url = a.href;
-        if (!url || !MEDIA_EXT.test(url) || isOurEndpoint(url) || terlihat.has(url)) return;
-        terlihat.add(url);
-        domLinks.push(url);
-      });
-
-      if (domLinks.length) {
-        const head2 = document.createElement("div");
-        head2.className = "swiftget-picker-head";
-        head2.textContent = `Tautan berkas di halaman — ${domLinks.length}`;
-        head2.style.marginTop = "10px";
-        box.appendChild(head2);
-
-        const kirimSemua = document.createElement("a");
-        kirimSemua.className = "swiftget-picker-row swiftget-send-all";
-        kirimSemua.textContent = `Kirim semua (${domLinks.length})`;
-        kirimSemua.href = "#";
-        kirimSemua.addEventListener("click", async (ev) => {
-          ev.preventDefault();
-          kirimSemua.style.pointerEvents = "none";
-          for (const url of domLinks) {
-            const reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer: location.href });
-            if (reply && reply.ok) candidates.set(url, "terkirim");
-          }
-          updateBadge();
-          closePicker();
-        });
-        box.appendChild(kirimSemua);
-
-        for (const url of domLinks.slice(0, 100)) {
-          const row = document.createElement("a");
-          row.className = "swiftget-picker-row";
-          row.textContent = url;
-          row.href = "#";
-          row.addEventListener("click", async (ev) => {
-            ev.preventDefault();
-            row.textContent = "Mengirim…";
-            const reply = await chrome.runtime.sendMessage({ type: "swiftget-add", url, referer: location.href });
-            row.textContent = (reply && reply.ok) ? `✓ ${url}` : ((reply && reply.message) || "Gagal mengirim");
-          });
-          box.appendChild(row);
-        }
-        if (domLinks.length > 100) {
-          const lagi = document.createElement("div");
-          lagi.className = "swiftget-picker-head";
-          lagi.textContent = `… dan ${domLinks.length - 100} tautan lain`;
-          box.appendChild(lagi);
-        }
-      }
-
-      const close = document.createElement("a");
-      close.className = "swiftget-picker-close";
-      close.textContent = "Tutup";
-      close.href = "#";
-      close.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        closePicker();
-      });
-      box.appendChild(close);
-
-      picker.appendChild(box);
-      document.documentElement.appendChild(picker);
-    };
-
-    closePicker = function () {
-      picker?.remove();
-      picker = null;
-    };
 
   }
 

@@ -10,10 +10,8 @@
         "youtube-nocookie.com"
       ],
       "ignoreImages": true,
-      "responseRegexes": [
-        "\"(https?:[^\\\"]*googlevideo\\.com/videoplayback[^\\\"]*)\""
-      ],
-      "note": "Video YouTube: URL videoplayback ada di JSON player (blob: tak bisa diunduh). Thumbnail i.ytimg.com sengaja diabaikan."
+      "note": "YouTube memakai SABR: URL player sengaja tak bisa diunduh langsung (403/host maya). Panel video blob ditahan; thumbnail diabaikan.",
+      "blobPanel": false
     },
     {
       "hosts": [
